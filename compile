@@ -1,0 +1,2 @@
+#!/bin/bash
+gcc main.c source/arena.c -lSDL2 -lSDL2_mixer
