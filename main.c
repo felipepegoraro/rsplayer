@@ -5,6 +5,7 @@
 #include <dirent.h>
 #include <stdlib.h>
 #include "./headers/arena.h"
+#include "./headers/trie.h"
 
 #define DEFAULT_DIR "/home/felipe/Músicas/"
 #define MAX_SONG 100
@@ -41,7 +42,6 @@ void read_dir_files(arena_t *arena, int max_songs)
                     strcat(song_path, dir->d_name);
                     i++;
                     arena->total++;
-                    printf("total: %zu\n", arena->total);
                 }
             }
         }
@@ -53,8 +53,6 @@ void cmd_play_pause(AppContext *ctx){
     int *ip = &ctx->status->isPaused;
     if (*ip){Mix_ResumeMusic(); *ip=0;}
     else {Mix_PauseMusic(); *ip=1;}
-
-    printf("música %s\n", *ip ? "pausada" : "tocando");
 }
 
 void cmd_seek_forward(AppContext *ctx){
@@ -69,40 +67,98 @@ void cmd_seek_backward(AppContext *ctx){
     printf("-10s\n");
 }
 
-void cmd_play_next_song(AppContext *ctx){
+void play_song(AppContext *ctx, const char *song_path) {
+    if (ctx->status->currentSong) {
+        Mix_FreeMusic(ctx->status->currentSong);
+    }
+    
+    ctx->status->currentSong = Mix_LoadMUS(song_path);
+    if (!ctx->status->currentSong) {
+        printf("Falha ao carregar a música! Erro SDL_mixer: %s\n", Mix_GetError());
+        return;
+    }
+
+    ctx->status->isPaused = 0;
+    printf("tocando: %s\n", song_path);
+    Mix_PlayMusic(ctx->status->currentSong, 1);
+}
+
+
+void cmd_play_next_song(AppContext *ctx) {
+    ctx->status->indexSong = (ctx->status->indexSong + 1) % ctx->arenaSongs.total;
+    const char *next = arena_get_by_index(&ctx->arenaSongs, ctx->status->indexSong);
+    if (next) play_song(ctx, next);
+}
+
+void cmd_play_prev_song(AppContext *ctx) {
+    ctx->status->indexSong = (ctx->status->indexSong - 1 + ctx->arenaSongs.total) % ctx->arenaSongs.total;
+    const char *prev = arena_get_by_index(&ctx->arenaSongs, ctx->status->indexSong);
+    if (prev) play_song(ctx, prev);
+}
+
+int sdl_init(void){
+    if (SDL_Init(SDL_INIT_AUDIO) < 0) {
+        printf("SDL não pôde ser inicializado! Erro SDL: %s\n", SDL_GetError());
+        return 1;
+    }
+
+    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
+        printf("SDL_mixer não pôde ser inicializado! Erro SDL_mixer: %s\n", Mix_GetError());
+        return 1;
+    }
+
+    return 0;
+}
+
+void sdl_close(AppContext *ctx){
     Mix_FreeMusic(ctx->status->currentSong);
+    Mix_CloseAudio();
+    SDL_Quit();
+    arena_free(ctx->arenaSongs.arena);
+}
 
-    if ((ctx->status->indexSong + 1) >= ctx->arenaSongs.total) {
-        printf("nao há mais músicas, reinicia playlist\n");
-        ctx->status->indexSong = 0;
-    } else ctx->status->indexSong++;
+void handle_user_input(AppContext *ctx, Commands *cmd, int cmd_count) {
+    char s;
 
-    const char *nt = arena_get_by_index(&ctx->arenaSongs, ctx->status->indexSong);
+    while (Mix_PlayingMusic() || !ctx->status->isPaused){
+        SDL_Delay(100);
 
-    if (nt){
-        ctx->status->currentSong = Mix_LoadMUS(nt);
-        if (!ctx->status->currentSong)
-            printf("Falha ao carregar a música! Erro SDL_mixer: %s\n", Mix_GetError());
+        if (!Mix_PlayingMusic()) cmd_play_next_song(ctx);
+        if (scanf(" %c", &s) != 1) continue;
 
-        Mix_PlayMusic(ctx->status->currentSong, 1);
-        printf("tocando nova musica: %s\n", nt);
+        for (int i = 0; i < cmd_count; i++) {
+            if (s == cmd[i].s) {
+                cmd[i].fn(ctx);
+                break;
+            }
+        }
+
+        if (s == 'q') break;
     }
 }
 
-int main(int argc, char* argv[])
+int main(void)
 {
+    PrefixTrie trie = ptrie_new();
+    ptrie_insert(&trie,"OK");
+    ptrie_insert(&trie,"-ok");
+    // ptrie_print(&trie);
+    ptrie_free(&trie);
+
+
+    if (sdl_init()!=0) return 1;
+
     Arena *a = arena_create(ARENA_BLOCK_SIZE);
     arena_t arena = {0, a};
 
-
-    printf(" ===== LENDO ARQUIVOS ===== \n");
     read_dir_files(&arena, MAX_SONG);
 
     Commands cmd[] = {
         {'p', cmd_play_pause},
         {'f', cmd_seek_forward},
         {'r', cmd_seek_backward},
-        {'n', cmd_play_next_song}
+        {'n', cmd_play_next_song},
+        {'b', cmd_play_prev_song}
     };
 
     AppStatus status = {
@@ -116,46 +172,12 @@ int main(int argc, char* argv[])
         .status = &status
     };
 
-    if (SDL_Init(SDL_INIT_AUDIO) < 0) {
-        printf("SDL não pôde ser inicializado! Erro SDL: %s\n", SDL_GetError());
-        return 1;
-    }
-
-    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
-        printf("SDL_mixer não pôde ser inicializado! Erro SDL_mixer: %s\n", Mix_GetError());
-        return 1;
-    }
-
+    // TODO: fuzzy finder para selecionar mppusica (Levenshtein Distance ou Trie)
     const char *song = arena_get_by_index(&ctx.arenaSongs, 0);
-    status.currentSong = Mix_LoadMUS(song);
-    if (!status.currentSong) {
-        printf("Failed to load music! SDL_mixer Error: %s\n", Mix_GetError());
-        return 1;
-    }
+    play_song(&ctx, song);
 
-    printf("\n ===== TOCANDO ===== \n\t(%s)\n", song);
-    Mix_PlayMusic(status.currentSong, 1);
+    handle_user_input(&ctx, cmd, sizeof(cmd) / sizeof(cmd[0]));
 
-    char s;
-
-    while (Mix_PlayingMusic() && s != 'q') {
-        SDL_Delay(100);
-        s = getchar();
-
-        for (int i = 0; i < sizeof(cmd) / sizeof(cmd[0]); i++) {
-            if (s == cmd[i].s) {
-                cmd[i].fn(&ctx);
-                break;
-            }
-        }
-    }
-
-    printf("música finalizada.\n");
-
-    Mix_FreeMusic(status.currentSong);
-    Mix_CloseAudio();
-    SDL_Quit();
-    arena_free(arena.arena);
+    sdl_close(&ctx);
     return 0;
 }
-
