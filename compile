@@ -1,2 +1,7 @@
 #!/bin/bash
-gcc main.c source/arena.c source/trie.c ./source/levenshtein.c ./source/id3.c -lSDL2 -lSDL2_mixer
+FLAGS="-Wall -Wextra -Werror -Wshadow -Wuninitialized"
+
+SRC="main.c"
+SRC_FILES="source/arena.c ./source/id3.c"
+
+gcc ${FLAGS} ${SRC} ${SRC_FILES} -lSDL2 -lSDL2_mixer

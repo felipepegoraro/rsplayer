@@ -13,10 +13,15 @@
 #define DEFAULT_DIR "/home/felipe/Músicas/"
 #define MAX_SONG 100
 
+typedef struct {
+    ID3V2_Tags tags;
+    Mix_Music *currentSong;
+} Music;
+
 typedef struct AppStatus {
     int indexSong;
     int isPaused;
-    Mix_Music *currentSong;
+    Music music;
 } AppStatus;
 
 typedef struct AppContext {
@@ -59,33 +64,50 @@ void cmd_play_pause(AppContext *ctx){
 }
 
 void cmd_seek_forward(AppContext *ctx){
-    double currentPos = Mix_GetMusicPosition(ctx->status->currentSong);
+    double currentPos = Mix_GetMusicPosition(ctx->status->music.currentSong);
     Mix_SetMusicPosition(currentPos + 10);
     printf("+10s\n");
 }
 
 void cmd_seek_backward(AppContext *ctx){
-    double currentPos = Mix_GetMusicPosition(ctx->status->currentSong);
+    double currentPos = Mix_GetMusicPosition(ctx->status->music.currentSong);
     Mix_SetMusicPosition(currentPos - 10);
     printf("-10s\n");
 }
 
 void play_song(AppContext *ctx, const char *song_path) {
-    if (ctx->status->currentSong) {
-        Mix_FreeMusic(ctx->status->currentSong);
+    FILE *f = id3_read_song_file(song_path);
+    if (!f) {
+        printf("erro inesperado\n");
+        return;
+    }
+
+    if (ctx->status->music.currentSong) {
+        Mix_FreeMusic(ctx->status->music.currentSong);
     }
     
-    ctx->status->currentSong = Mix_LoadMUS(song_path);
-    if (!ctx->status->currentSong) {
+    ctx->status->music.currentSong = Mix_LoadMUS(song_path);
+    if (!ctx->status->music.currentSong) {
         printf("Falha ao carregar a música! Erro SDL_mixer: %s\n", Mix_GetError());
         return;
     }
 
     ctx->status->isPaused = 0;
-    printf("tocando: %s\n", song_path);
-    Mix_PlayMusic(ctx->status->currentSong, 1);
+
+    Mix_PlayMusic(ctx->status->music.currentSong, 1);
+
+    ID3V2_Tags tg =  id3_get_song_tags(f);
+
+    if (strlen(tg.tags.title)>0 && strlen(tg.tags.artist)>0 && strlen(tg.tags.year)>0){
+        ctx->status->music.tags = tg;
+        printf("tocando: %s - %s (%s)\n", tg.tags.title, tg.tags.artist, tg.tags.year);
+    } else {
+        printf("tocando: %s\n", song_path);
+    }
 }
 
+
+// TODO: playlist (prev/next deve verificar contexto)
 
 void cmd_play_next_song(AppContext *ctx) {
     ctx->status->indexSong = (ctx->status->indexSong + 1) % ctx->arenaSongs.total;
@@ -114,7 +136,7 @@ int sdl_init(void){
 }
 
 void sdl_close(AppContext *ctx){
-    Mix_FreeMusic(ctx->status->currentSong);
+    Mix_FreeMusic(ctx->status->music.currentSong);
     Mix_CloseAudio();
     SDL_Quit();
     arena_free(ctx->arenaSongs.arena);
@@ -161,7 +183,10 @@ int main(void)
     AppStatus status = {
         .indexSong = 0,
         .isPaused = 0,
-        .currentSong = NULL
+        .music = {
+            .tags = {},
+            .currentSong = NULL
+        }
     };
 
     AppContext ctx = {
@@ -172,17 +197,6 @@ int main(void)
     // TODO: fuzzy finder para selecionar mppusica (Levenshtein Distance ou Trie)
     const char *song = arena_get_by_index(&ctx.arenaSongs, 0);
     play_song(&ctx, song);
-    FILE *f = id3_read_song_file(song);
-    ID3V2_Tags tg;
-    if (f) {
-        tg = id3_get_song_tags(f);
-        fclose(f);
-        
-        printf("Título: %s\n", tg.tags.title);
-        printf("Artista: %s\n", tg.tags.artist);
-        printf("Álbum: %s\n", tg.tags.album);
-        printf("Ano: %s\n", tg.tags.year);
-    }
 
     handle_user_input(&ctx, cmd, sizeof(cmd) / sizeof(cmd[0]));
 

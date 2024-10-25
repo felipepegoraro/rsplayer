@@ -45,11 +45,11 @@ void arena_free(Arena *a) {
     a = NULL;
 }
 
-const char *arena_get_by_index(arena_t *arena, int index) {
+const char *arena_get_by_index(arena_t *arena, size_t index) {
     if (index > arena->total) return NULL;
 
     size_t offset = 0;
-    for (int i = 0; i < index; i++) {
+    for (size_t i = 0; i < index; i++) {
         if (i < arena->total) {
             offset += strlen(arena->arena->memory + offset) + 1;
         } else {

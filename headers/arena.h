@@ -20,6 +20,6 @@ typedef struct arena_t {
 Arena *arena_create(size_t block_size);
 void *arena_alloc(Arena *a, size_t size);
 void arena_free(Arena *a);
-const char *arena_get_by_index(arena_t *arena, int index);
+const char *arena_get_by_index(arena_t *arena, size_t index);
 
 #endif

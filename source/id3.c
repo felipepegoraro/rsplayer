@@ -11,7 +11,6 @@ FILE *id3_read_song_file(const char *filename) {
         return NULL;
     }
 
-    printf("aberto: %s\n", filename);
     return fp;
 }
 
@@ -103,9 +102,18 @@ void id3_populate_tags_from_frames(ID3FrameCollection *collection, ID3V2_Tags *t
 
     for (size_t i = 0; i < collection->count; i++) {
         ID3Frame *frame = &collection->frames[i];
-        if (strcmp(frame->frame_id, "TIT2") == 0) strcpy(tags->tags.title, frame->frame_data + 1);
-        else if (strcmp(frame->frame_id, "TPE1") == 0) strcpy(tags->tags.artist, frame->frame_data + 1);
-        else if (strcmp(frame->frame_id, "TALB") == 0) strcpy(tags->tags.album, frame->frame_data + 1);
+        if (strcmp(frame->frame_id, "TIT2") == 0) {
+            strcpy(tags->tags.title, frame->frame_data+1);
+            tags->tags.title[frame->frame_size-1] = '\0';
+        }
+        else if (strcmp(frame->frame_id, "TPE1") == 0) {
+            strcpy(tags->tags.artist, frame->frame_data + 1);
+            tags->tags.artist[frame->frame_size-1] = '\0';
+        }
+        else if (strcmp(frame->frame_id, "TALB") == 0) {
+            strcpy(tags->tags.album, frame->frame_data + 1);
+            tags->tags.album[frame->frame_size-1] = '\0';
+        }
         else if (strcmp(frame->frame_id, "TYER") == 0) {
             strncpy(tags->tags.year, frame->frame_data + 1, 4);
             tags->tags.year[4] = '\0';
@@ -119,10 +127,11 @@ ID3V2_Tags id3_get_song_tags(FILE *fp) {
     ID3V2_Tags tg = {};
 
     if (id3_file(fp, &tg) == 0) {
-        uint8_t major = (tg.version >> 8) & 0xff;
-        uint8_t minor = tg.version & 0xff;
-        printf("version: %u.%u\n", major, minor);
-        printf("size...: %u\n", tg.size);
+        // uint8_t major = (tg.version >> 8) & 0xff;
+        // uint8_t minor = tg.version & 0xff;
+
+        // printf("version: %u.%u\n", major, minor);
+        // printf("size...: %u\n", tg.size);
 
         ID3FrameCollection *collection = id3_read_id3v2_frames(fp, tg.size);
         if (collection) {

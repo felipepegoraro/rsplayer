@@ -115,7 +115,7 @@ int helper_no_children(TrieNode *node) {
     return 1;
 }
 
-int helper_ptrie_delete(TrieNode *current, const char *word, int depth){
+int helper_ptrie_delete(TrieNode *current, const char *word, size_t depth){
     //1 é erro nesse caso
     if (!current) return 1;
     if (depth == strlen(word)){

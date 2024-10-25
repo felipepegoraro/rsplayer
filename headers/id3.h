@@ -39,7 +39,7 @@ typedef struct {
 } ID3FrameCollection;
 
 FILE *id3_read_song_file(const char *filename);
-int id3_file(FILE *fp, ID3V2_Tags *tags);;
+int id3_file(FILE *fp, ID3V2_Tags *tags);
 ID3FrameCollection *id3_read_id3v2_frames(FILE *fp, uint32_t tag_size);
 void id3_free_id3_frame_collection(ID3FrameCollection *collection);
 void id3_populate_tags_from_frames(ID3FrameCollection *collection, ID3V2_Tags *tags);
