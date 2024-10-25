@@ -6,6 +6,7 @@
 #define ALPHABET_SIZE 40 // 26letras+10digitos+1ponto+2traços+1espaco
 #define INITIAL_TRIE_ARENA_SIZE 1024
 #define MAX_WORD_SIZE 256
+#define MAX_SUGGESTIONS 16
 
 typedef struct TrieNode {
     char value;
@@ -26,7 +27,8 @@ void ptrie_free(PrefixTrie *trie);
 void ptrie_insert(PrefixTrie *trie, const char *word);
 int ptrie_delete(PrefixTrie *trie, const char *word);
 
-int ptrie_search(PrefixTrie *trie, const char *word);
+// int ptrie_search(PrefixTrie *trie, const char *word);
+char **ptrie_search(PrefixTrie *trie, const char *prefix);
 int ptrie_starts_with(PrefixTrie *trie, const char *prefix);
 
 void ptrie_print(PrefixTrie *trie); // ordem lexicográfica

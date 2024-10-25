@@ -1,2 +1,2 @@
 #!/bin/bash
-gcc main.c source/arena.c source/trie.c -lSDL2 -lSDL2_mixer
+gcc main.c source/arena.c source/trie.c ./source/levenshtein.c ./source/id3.c -lSDL2 -lSDL2_mixer

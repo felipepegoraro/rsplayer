@@ -4,8 +4,11 @@
 #include <string.h>
 #include <dirent.h>
 #include <stdlib.h>
+#include <limits.h>
 #include "./headers/arena.h"
-#include "./headers/trie.h"
+#include "./headers/id3.h"
+// #include "./headers/levenshtein.h"
+// #include "./headers/trie.h"
 
 #define DEFAULT_DIR "/home/felipe/Músicas/"
 #define MAX_SONG 100
@@ -139,13 +142,6 @@ void handle_user_input(AppContext *ctx, Commands *cmd, int cmd_count) {
 
 int main(void)
 {
-    PrefixTrie trie = ptrie_new();
-    ptrie_insert(&trie,"OK");
-    ptrie_insert(&trie,"-ok");
-    // ptrie_print(&trie);
-    ptrie_free(&trie);
-
-
     if (sdl_init()!=0) return 1;
 
     Arena *a = arena_create(ARENA_BLOCK_SIZE);
@@ -159,6 +155,7 @@ int main(void)
         {'r', cmd_seek_backward},
         {'n', cmd_play_next_song},
         {'b', cmd_play_prev_song}
+        // {'s', cmd_search_song}
     };
 
     AppStatus status = {
@@ -175,6 +172,17 @@ int main(void)
     // TODO: fuzzy finder para selecionar mppusica (Levenshtein Distance ou Trie)
     const char *song = arena_get_by_index(&ctx.arenaSongs, 0);
     play_song(&ctx, song);
+    FILE *f = id3_read_song_file(song);
+    ID3V2_Tags tg;
+    if (f) {
+        tg = id3_get_song_tags(f);
+        fclose(f);
+        
+        printf("Título: %s\n", tg.tags.title);
+        printf("Artista: %s\n", tg.tags.artist);
+        printf("Álbum: %s\n", tg.tags.album);
+        printf("Ano: %s\n", tg.tags.year);
+    }
 
     handle_user_input(&ctx, cmd, sizeof(cmd) / sizeof(cmd[0]));
 

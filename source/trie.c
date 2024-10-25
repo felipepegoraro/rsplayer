@@ -71,20 +71,22 @@ void ptrie_free(PrefixTrie *trie) {
     if (trie) arena_free(trie->arena);
 }
 
-int ptrie_search(PrefixTrie *trie, const char *word){
+void helper_ptrie_collect();
+char **ptrie_search(PrefixTrie *trie, const char *prefix);
+
+int ptrie_starts_with(PrefixTrie *trie, const char *prefix){
     if (!trie || !trie->root) return 1;
 
     TrieNode *current = trie->root;
-    for (const char *ch = word; *ch; ch++){
+    for (const char *ch = prefix; *ch; ch++){
         int index = get_index(*ch);
-        if(!current->children[index]) return 1; //nao encontrado
+        if (index < 0 || index >= ALPHABET_SIZE) return 1;
+        if (!current->children[index]) return 1;
         current = current->children[index];
     }
 
-    return current->is_terminal ? 0 : 1;
+    return 0;
 }
-
-int ptrie_starts_with(PrefixTrie *trie, const char *prefix);
 
 void helper_ptrie_print(TrieNode*node, char *prefix, int depth){
     if (node->is_terminal){
