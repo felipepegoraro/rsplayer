@@ -1,7 +1,9 @@
 #ifndef PREFIX_TRIE_H
 #define PREFIX_TRIE_H
 
+#ifndef ARENA_H
 #include "./arena.h"
+#endif
 
 #define ALPHABET_SIZE 40 // 26letras+10digitos+1ponto+2traços+1espaco
 #define INITIAL_TRIE_ARENA_SIZE 1024

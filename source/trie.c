@@ -5,7 +5,6 @@
 //primeira vez impleemntando uma prefix trie 
 //talvez seja usada na busca por musicas ou nao,
 //pelo menos ta pronto
-//corrigir vazamento
 
 TrieNode *trie_node_new(Arena *arena){
     TrieNode *node = (TrieNode*) arena_alloc(arena, sizeof(TrieNode));
@@ -68,7 +67,11 @@ void ptrie_insert(PrefixTrie *trie, const char *word){
 }
 
 void ptrie_free(PrefixTrie *trie) {
-    if (trie) arena_free(trie->arena);
+    if (trie){
+        arena_free(trie->arena);
+        trie->root = NULL;
+        trie->arena = NULL;
+    }
 }
 
 void helper_ptrie_collect();

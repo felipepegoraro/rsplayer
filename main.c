@@ -9,14 +9,11 @@
 #include "./headers/id3.h"
 // #include "./headers/levenshtein.h"
 // #include "./headers/trie.h"
+// #include "./headers/queue.h"
+#include "./headers/hashtable.h"
 
 #define DEFAULT_DIR "/home/felipe/Músicas/"
 #define MAX_SONG 100
-
-typedef struct {
-    ID3V2_Tags tags;
-    Mix_Music *currentSong;
-} Music;
 
 typedef struct AppStatus {
     int indexSong;
@@ -58,24 +55,32 @@ void read_dir_files(arena_t *arena, int max_songs)
 }
 
 void cmd_play_pause(AppContext *ctx){
-    int *ip = &ctx->status->isPaused;
-    if (*ip){Mix_ResumeMusic(); *ip=0;}
-    else {Mix_PauseMusic(); *ip=1;}
+    if (ctx){
+        int *ip = &ctx->status->isPaused;
+        if (*ip){Mix_ResumeMusic(); *ip=0;}
+        else {Mix_PauseMusic(); *ip=1;}
+    }
 }
 
 void cmd_seek_forward(AppContext *ctx){
-    double currentPos = Mix_GetMusicPosition(ctx->status->music.currentSong);
-    Mix_SetMusicPosition(currentPos + 10);
-    printf("+10s\n");
+    if (ctx){
+        double currentPos = Mix_GetMusicPosition(ctx->status->music.currentSong);
+        Mix_SetMusicPosition(currentPos + 10);
+        printf("+10s\n");
+    }
 }
 
 void cmd_seek_backward(AppContext *ctx){
-    double currentPos = Mix_GetMusicPosition(ctx->status->music.currentSong);
-    Mix_SetMusicPosition(currentPos - 10);
-    printf("-10s\n");
+    if (ctx){
+        double currentPos = Mix_GetMusicPosition(ctx->status->music.currentSong);
+        Mix_SetMusicPosition(currentPos - 10);
+        printf("-10s\n");
+    }
 }
 
 void play_song(AppContext *ctx, const char *song_path) {
+    if (!ctx || !song_path) return;
+
     FILE *f = id3_read_song_file(song_path);
     if (!f) {
         printf("erro inesperado\n");
@@ -110,19 +115,29 @@ void play_song(AppContext *ctx, const char *song_path) {
 // TODO: playlist (prev/next deve verificar contexto)
 
 void cmd_play_next_song(AppContext *ctx) {
-    ctx->status->indexSong = (ctx->status->indexSong + 1) % ctx->arenaSongs.total;
-    const char *next = arena_get_by_index(&ctx->arenaSongs, ctx->status->indexSong);
-    if (next) play_song(ctx, next);
+    if (ctx){
+        ctx->status->indexSong = (ctx->status->indexSong + 1) % ctx->arenaSongs.total;
+        const char *next = arena_get_by_index(&ctx->arenaSongs, ctx->status->indexSong);
+        if (next) play_song(ctx, next);
+    }
 }
 
 void cmd_play_prev_song(AppContext *ctx) {
-    ctx->status->indexSong = (ctx->status->indexSong - 1 + ctx->arenaSongs.total) % ctx->arenaSongs.total;
-    const char *prev = arena_get_by_index(&ctx->arenaSongs, ctx->status->indexSong);
-    if (prev) play_song(ctx, prev);
+    if (ctx){
+        ctx->status->indexSong = (ctx->status->indexSong - 1 + ctx->arenaSongs.total) % ctx->arenaSongs.total;
+        const char *prev = arena_get_by_index(&ctx->arenaSongs, ctx->status->indexSong);
+        if (prev) play_song(ctx, prev);
+    }
 }
 
+// void cmd_search_song(AppContext *ctx){
+    // usar trie para autocomplete das musicas na busca
+    // ao pegar uma musica (dps do autocomplete e apertar enter)
+    // tocar a musica.
+// }
+
 int sdl_init(void){
-    if (SDL_Init(SDL_INIT_AUDIO) < 0) {
+    if (SDL_Init(SDL_INIT_AUDIO | SDL_INIT_VIDEO) < 0) {
         printf("SDL não pôde ser inicializado! Erro SDL: %s\n", SDL_GetError());
         return 1;
     }
@@ -139,7 +154,6 @@ void sdl_close(AppContext *ctx){
     Mix_FreeMusic(ctx->status->music.currentSong);
     Mix_CloseAudio();
     SDL_Quit();
-    arena_free(ctx->arenaSongs.arena);
 }
 
 void handle_user_input(AppContext *ctx, Commands *cmd, int cmd_count) {
@@ -201,5 +215,6 @@ int main(void)
     handle_user_input(&ctx, cmd, sizeof(cmd) / sizeof(cmd[0]));
 
     sdl_close(&ctx);
+    arena_free(ctx.arenaSongs.arena);
     return 0;
 }

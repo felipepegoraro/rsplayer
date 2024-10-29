@@ -2,6 +2,6 @@
 FLAGS="-Wall -Wextra -Werror -Wshadow -Wuninitialized"
 
 SRC="main.c"
-SRC_FILES="source/arena.c ./source/id3.c"
+SRC_FILES="source/arena.c ./source/id3.c ./source/trie.c ./source/queue.c ./source/hashtable.c"
 
-gcc ${FLAGS} ${SRC} ${SRC_FILES} -lSDL2 -lSDL2_mixer
+gcc ${FLAGS} ${SRC} ${SRC_FILES} -lSDL2 -lSDL2_mixer -lssl -lcrypto

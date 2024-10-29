@@ -25,6 +25,12 @@ typedef struct ID3V2_Tags {
     Tags tags;
 } ID3V2_Tags;
 
+#include <SDL2/SDL_mixer.h>
+typedef struct {
+    ID3V2_Tags tags;
+    Mix_Music *currentSong;
+} Music;
+
 // 10 bytes + data
 typedef struct {
     // 4 pro id + 1 '\0' (frame header TIT2, TPE1, etc)
