@@ -6,23 +6,23 @@
 //    `id3v2 --album "album-name" filename`
 // etc. (veja todos em `id3v2 --help`)
 
-#define T_ID3V2_MAX 256
+#define T_ID3V2_MAX 128
 
 #include <stdint.h>
 #include <stdio.h>
 
-typedef struct Tags {
+// typedef struct Tags {
+// } Tags;
+
+typedef struct ID3V2_Tags {
+    uint8_t size;
+    uint16_t version;
+
     char title[T_ID3V2_MAX];    // TIT2 (Título)
     char artist[T_ID3V2_MAX];   // TPE1 (Artista)
     char album[T_ID3V2_MAX];    // TALB (Álbum)
     char year[5];               // TYER (Ano)
     char genre[T_ID3V2_MAX];    // TCON (Gênero)
-} Tags;
-
-typedef struct ID3V2_Tags {
-    uint8_t size;
-    uint16_t version;
-    Tags tags;
 } ID3V2_Tags;
 
 #include <SDL2/SDL_mixer.h>

@@ -3,7 +3,7 @@
 
 #include <stdlib.h>
 
-#define ARENA_BLOCK_SIZE 4096
+#define ARENA_BLOCK_SIZE 16384
 
 typedef struct Arena {
     char *memory;

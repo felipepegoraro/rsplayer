@@ -1,5 +1,6 @@
 #include "../headers/arena.h"
 #include <string.h>
+#include <stdio.h>
 
 Arena *arena_create(size_t block_size){
     Arena *a = malloc(sizeof(Arena));
@@ -19,7 +20,8 @@ Arena *arena_create(size_t block_size){
 }
 
 void *arena_alloc(Arena *a, size_t size){
-    if (a->used + size > a->total_size){
+    if (a->used + size > a->total_size) {
+        // só cria um novo bloco se não houver espaço suficiente
         size_t new_block_size = (size > ARENA_BLOCK_SIZE) ? size : ARENA_BLOCK_SIZE;
         Arena *new_arena = arena_create(new_block_size);
         if (!new_arena) return NULL;
@@ -46,15 +48,16 @@ void arena_free(Arena *a) {
 }
 
 const char *arena_get_by_index(arena_t *arena, size_t index) {
-    if (index > arena->total) return NULL;
+    if (index >= arena->total) return NULL;
 
     size_t offset = 0;
     for (size_t i = 0; i < index; i++) {
-        if (i < arena->total) {
-            offset += strlen(arena->arena->memory + offset) + 1;
-        } else {
+        size_t len = strlen(arena->arena->memory + offset);
+        if (offset + len >= arena->arena->total_size) {
+            printf("Erro: acesso fora dos limites\n");
             return NULL;
         }
+        offset += len + 1;
     }
     return arena->arena->memory + offset;
 }

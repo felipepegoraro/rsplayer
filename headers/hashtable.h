@@ -28,9 +28,9 @@ typedef struct hashtable {
 HashTable hs_create(void);
 void hs_free(HashTable*);
 
-void hs_insert(HashTable *hs, Music *value, const char *songName);
-Entry *hs_search(const HashTable *hs, const char *key);
-int hs_delete(HashTable*, const char *key);
+size_t hs_insert(HashTable *hs, Music *value, const char *songName);
+Entry *hs_search(const HashTable *hs, unsigned long key);
+int hs_delete(HashTable*, unsigned long key);
 
 // void hs_map(
 //   HashTable*,

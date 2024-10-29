@@ -103,20 +103,20 @@ void id3_populate_tags_from_frames(ID3FrameCollection *collection, ID3V2_Tags *t
     for (size_t i = 0; i < collection->count; i++) {
         ID3Frame *frame = &collection->frames[i];
         if (strcmp(frame->frame_id, "TIT2") == 0) {
-            strcpy(tags->tags.title, frame->frame_data+1);
-            tags->tags.title[frame->frame_size-1] = '\0';
+            strcpy(tags->title, frame->frame_data+1);
+            tags->title[frame->frame_size-1] = '\0';
         }
         else if (strcmp(frame->frame_id, "TPE1") == 0) {
-            strcpy(tags->tags.artist, frame->frame_data + 1);
-            tags->tags.artist[frame->frame_size-1] = '\0';
+            strcpy(tags->artist, frame->frame_data + 1);
+            tags->artist[frame->frame_size-1] = '\0';
         }
         else if (strcmp(frame->frame_id, "TALB") == 0) {
-            strcpy(tags->tags.album, frame->frame_data + 1);
-            tags->tags.album[frame->frame_size-1] = '\0';
+            strcpy(tags->album, frame->frame_data + 1);
+            tags->album[frame->frame_size-1] = '\0';
         }
         else if (strcmp(frame->frame_id, "TYER") == 0) {
-            strncpy(tags->tags.year, frame->frame_data + 1, 4);
-            tags->tags.year[4] = '\0';
+            strncpy(tags->year, frame->frame_data + 1, 4);
+            tags->year[4] = '\0';
         }
     }
 }

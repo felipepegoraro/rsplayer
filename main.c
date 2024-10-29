@@ -18,12 +18,13 @@
 typedef struct AppStatus {
     int indexSong;
     int isPaused;
-    Music music;
+    Music music; // atual
 } AppStatus;
 
 typedef struct AppContext {
     AppStatus *status;
     arena_t arenaSongs;
+    // HashTable *songs
 } AppContext;
 
 typedef struct Commands {
@@ -103,9 +104,9 @@ void play_song(AppContext *ctx, const char *song_path) {
 
     ID3V2_Tags tg =  id3_get_song_tags(f);
 
-    if (strlen(tg.tags.title)>0 && strlen(tg.tags.artist)>0 && strlen(tg.tags.year)>0){
+    if (strlen(tg.title)>0 && strlen(tg.artist)>0 && strlen(tg.year)>0){
         ctx->status->music.tags = tg;
-        printf("tocando: %s - %s (%s)\n", tg.tags.title, tg.tags.artist, tg.tags.year);
+        printf("tocando: %s - %s (%s)\n", tg.title, tg.artist, tg.year);
     } else {
         printf("tocando: %s\n", song_path);
     }
@@ -178,6 +179,50 @@ void handle_user_input(AppContext *ctx, Commands *cmd, int cmd_count) {
 
 int main(void)
 {
+    //
+    // Music ms = {
+    //     .tags = {
+    //         .version = 0,
+    //         .size = 0,
+    //         .year = "2020",
+    //         .album = "album",
+    //         .genre = "genre",
+    //         .title = "title",
+    //         .artist = "artist"
+    //     },
+    //     .currentSong = NULL
+    // };
+    //
+    // Music ms1 = {
+    //     .tags = {
+    //         .version = 0,
+    //         .size = 0,
+    //     },
+    //     .currentSong = NULL
+    // };
+    //
+    // Music mss = {
+    //     .tags = {
+    //         .version = 0,
+    //         .size = 0,
+    //         .year = "2020",
+    //         .album = "xxxxx",
+    //         .genre = "xxxx",
+    //         .title = "xxxx",
+    //         .artist = "xxxxx"
+    //     },
+    //     .currentSong = NULL
+    // };
+    //
+    // HashTable hs = hs_create();
+    // hs_insert(&hs, &ms, "ok");
+    // hs_insert(&hs, &ms1, "musica-null");
+    // hs_insert(&hs, &mss, "ok");
+    // (void)hs_search(&hs, 2867999238);
+    // (void)hs_search(&hs, 612476476);
+    // hs_free(&hs);
+    // return 0 ;
+
     if (sdl_init()!=0) return 1;
 
     Arena *a = arena_create(ARENA_BLOCK_SIZE);
