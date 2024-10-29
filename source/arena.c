@@ -40,6 +40,7 @@ void arena_free(Arena *a) {
     while (a) {
         Arena *next = a->next;
         free(a->memory);
+        a->memory = NULL;
         free(a);
         a = next;
     }

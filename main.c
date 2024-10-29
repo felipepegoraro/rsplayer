@@ -10,10 +10,11 @@
 // #include "./headers/levenshtein.h"
 // #include "./headers/trie.h"
 // #include "./headers/queue.h"
-#include "./headers/hashtable.h"
+// #include "./headers/hashtable.h"
+#include "./headers/playlist.h"
 
 #define DEFAULT_DIR "/home/felipe/Músicas/"
-#define MAX_SONG 100
+#define MAX_SONGS 100 
 
 typedef struct AppStatus {
     int indexSong;
@@ -179,41 +180,10 @@ void handle_user_input(AppContext *ctx, Commands *cmd, int cmd_count) {
 
 int main(void)
 {
-    //
-    // Music ms = {
-    //     .tags = {
-    //         .version = 0,
-    //         .size = 0,
-    //         .year = "2020",
-    //         .album = "album",
-    //         .genre = "genre",
-    //         .title = "title",
-    //         .artist = "artist"
-    //     },
-    //     .currentSong = NULL
-    // };
-    //
-    // Music ms1 = {
-    //     .tags = {
-    //         .version = 0,
-    //         .size = 0,
-    //     },
-    //     .currentSong = NULL
-    // };
-    //
-    // Music mss = {
-    //     .tags = {
-    //         .version = 0,
-    //         .size = 0,
-    //         .year = "2020",
-    //         .album = "xxxxx",
-    //         .genre = "xxxx",
-    //         .title = "xxxx",
-    //         .artist = "xxxxx"
-    //     },
-    //     .currentSong = NULL
-    // };
-    //
+    Music ms = { .tags = { .version = 0, .size = 0, .year = "2020", .album = "album", .genre = "genre", .title = "musica1", .artist = "artist" }, .currentSong = NULL };
+    Music ms1 = { .tags = { .version = 0, .size = 0, .year = "2020", .album = "album", .genre = "genre", .title = "musica2", .artist = "artist" }, .currentSong = NULL };
+    Music ms2 = { .tags = { .version = 0, .size = 0, .year = "2020", .album = "xxxxx", .genre = "xxxx", .title = "musica3", .artist = "xxxxx" }, .currentSong = NULL };
+
     // HashTable hs = hs_create();
     // hs_insert(&hs, &ms, "ok");
     // hs_insert(&hs, &ms1, "musica-null");
@@ -221,14 +191,25 @@ int main(void)
     // (void)hs_search(&hs, 2867999238);
     // (void)hs_search(&hs, 612476476);
     // hs_free(&hs);
-    // return 0 ;
+    
+    Playlist p = playlist_init("play1", 0, &ms);
+    printf("pos init: len(%zu) index(%zu)\n", p.queue->len, p.current_index);
+    playlist_add(&p, &ms1);
+    printf("pos add ms1: len(%zu) index(%zu)\n", p.queue->len, p.current_index);
+    playlist_add(&p, &ms2);
+    printf("pos add ms2: len(%zu) index(%zu)\n", p.queue->len, p.current_index);
+    playlist_next(&p);
+    printf("pos next: len(%zu) index(%zu)\n", p.queue->len, p.current_index);
+    playlist_free(&p);
+
+    return 0 ;
 
     if (sdl_init()!=0) return 1;
 
     Arena *a = arena_create(ARENA_BLOCK_SIZE);
     arena_t arena = {0, a};
 
-    read_dir_files(&arena, MAX_SONG);
+    read_dir_files(&arena, MAX_SONGS);
 
     Commands cmd[] = {
         {'p', cmd_play_pause},
