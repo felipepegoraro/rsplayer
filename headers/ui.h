@@ -22,6 +22,10 @@ typedef struct {
     Rectangle bounds;
     Color color;
     const char *label;
+    void (*onClick)(void*);
 } Button;
+
+void m_DrawButton(Button button);
+bool m_CallbackButtonClicked(Button button);
 
 #endif

@@ -3,6 +3,6 @@
 FLAGS=""
 
 SRC="main.c"
-SRC_FILES="source/arena.c ./source/id3.c ./source/trie.c ./source/queue.c ./source/hashtable.c ./source/playlist.c"
+SRC_FILES="source/arena.c ./source/id3.c ./source/playlist.c ./source/ui.c ./source/timer.c ./source/queue.c"
 
 gcc ${FLAGS} ${SRC} ${SRC_FILES} -lraylib -lssl -lcrypto -lpthread

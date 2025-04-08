@@ -1,3 +1,4 @@
+#include <raylib.h>
 #include <stdio.h>
 #include <string.h>
 #include <dirent.h>
@@ -8,6 +9,7 @@
 #include "./headers/arena.h"
 #include "./headers/id3.h"
 #include "./headers/ui.h"
+#include "./headers/timer.h"
 
 // #include "./headers/levenshtein.h"
 // #include "./headers/trie.h"
@@ -34,7 +36,7 @@ typedef struct AppContext {
 
 typedef struct Commands {
     char s;
-    void (*fn) (AppContext*);
+    void (*fn) (void*); // (AppContext*)
 } Commands;
 
 void read_dir_files(arena_t *arena, int max_songs)
@@ -60,7 +62,8 @@ void read_dir_files(arena_t *arena, int max_songs)
     }
 }
 
-void cmd_play_pause(AppContext *ctx){
+void cmd_play_pause(void *context){
+    AppContext *ctx = (AppContext*)context;
     if (ctx){
         int *ip = &ctx->status->isPaused;
         if (*ip){ResumeMusicStream(*ctx->status->music.currentSong); *ip=0;}
@@ -68,7 +71,9 @@ void cmd_play_pause(AppContext *ctx){
     }
 }
 
-void cmd_seek_forward(AppContext *ctx) {
+void cmd_seek_forward(void *context) {
+    AppContext *ctx = (AppContext*)context;
+
     if (ctx && ctx->status && ctx->status->music.currentSong) {
         Music *song = ctx->status->music.currentSong;
         float current = GetMusicTimePlayed(*song);
@@ -81,7 +86,9 @@ void cmd_seek_forward(AppContext *ctx) {
 }
 
 
-void cmd_seek_backward(AppContext *ctx) {
+void cmd_seek_backward(void *context) {
+    AppContext *ctx = (AppContext*)context;
+
     if (ctx && ctx->status && ctx->status->music.currentSong) {
         Music *song = ctx->status->music.currentSong;
         float current = GetMusicTimePlayed(*song);
@@ -129,6 +136,7 @@ void play_song(AppContext *ctx, const char *song_path) {
     memcpy(musicPtr, &tempMusic, sizeof(Music));
     ctx->status->music.currentSong = musicPtr;
 
+    while (!IsMusicReady(*musicPtr));
     PlayMusicStream(*musicPtr);
 
     ID3V2_Tags tg = id3_get_song_tags(f);
@@ -148,7 +156,9 @@ void play_song(AppContext *ctx, const char *song_path) {
 
 // TODO: playlist (prev/next deve verificar contexto)
 
-void cmd_play_next_song(AppContext *ctx) {
+void cmd_play_next_song(void *context) {
+    AppContext *ctx = (AppContext*)context;
+
     if (ctx){
         ctx->status->indexSong = (ctx->status->indexSong + 1) % ctx->arenaSongs.total;
         const char *next = arena_get_by_index(&ctx->arenaSongs, ctx->status->indexSong);
@@ -158,7 +168,9 @@ void cmd_play_next_song(AppContext *ctx) {
     }
 }
 
-void cmd_play_prev_song(AppContext *ctx) {
+void cmd_play_prev_song(void *context) {
+    AppContext *ctx = (AppContext*)context;
+
     if (ctx){
         ctx->status->indexSong = (ctx->status->indexSong - 1 + ctx->arenaSongs.total) % ctx->arenaSongs.total;
         const char *prev = arena_get_by_index(&ctx->arenaSongs, ctx->status->indexSong);
@@ -167,7 +179,7 @@ void cmd_play_prev_song(AppContext *ctx) {
     }
 }
 
-// void cmd_search_song(AppContext *ctx){
+// void cmd_search_song(void *ctx){
     // usar trie para autocomplete das musicas na busca
     // ao pegar uma musica (dps do autocomplete e apertar enter)
     // tocar a musica.
@@ -195,8 +207,8 @@ void ray_close(AppContext *ctx) {
 }
 
 
-void *music_thread_fn(void *arg) {
-    AppContext *ctx = (AppContext*) arg;
+void *music_thread_fn(void *context) {
+    AppContext *ctx = (AppContext*) context;
 
     while (!WindowShouldClose()) {
         if ((ctx->status->music.currentSong && IsMusicStreamPlaying(*ctx->status->music.currentSong)) || !ctx->status->isPaused) {
@@ -204,8 +216,14 @@ void *music_thread_fn(void *arg) {
                 UpdateMusicStream(*ctx->status->music.currentSong);
             }
 
-            if (!IsMusicStreamPlaying(*ctx->status->music.currentSong) && !ctx->status->isPaused) {
-                cmd_play_next_song(ctx);
+            if (!ctx->status->isPaused && ctx->status->music.currentSong) {
+                float played = GetMusicTimePlayed(*ctx->status->music.currentSong);
+                float total = GetMusicTimeLength(*ctx->status->music.currentSong);
+
+                if ((total - played) < 0.1f) {
+                    cmd_play_next_song(ctx);
+                    printf("NEXT FUCKING SONG!\n");
+                }
             }
         }
 
@@ -224,6 +242,12 @@ void handle_user_input(AppContext *ctx, Commands *cmd, int cmd_count) {
         }
     }
 }
+
+Button buttons[] = {
+    { .bounds = (Rectangle){160, 50, 100, 40}, .color = RED, .label = "Pause", .onClick = cmd_play_pause },
+    { .bounds = (Rectangle){270, 50, 100, 40}, .color = DARKBLUE, .label = "Next", .onClick = cmd_play_next_song },
+    { .bounds = (Rectangle){50, 50, 100, 40}, .color = DARKBLUE, .label = "Prev", .onClick = cmd_play_prev_song }
+};
 
 int main(void)
 {
@@ -263,24 +287,45 @@ int main(void)
     pthread_t music_thread;
     pthread_create(&music_thread, NULL, music_thread_fn, &ctx);
 
+    Timer timer = {0};
+
     while (!WindowShouldClose()){
         handle_user_input(&ctx, cmd, sizeof(cmd) / sizeof(cmd[0]));
 
+        updateTimer(
+            &timer,
+            GetMusicTimePlayed(*ctx.status->music.currentSong),
+            GetMusicTimeLength(*ctx.status->music.currentSong)
+        );
+
         BeginDrawing();
-            ClearBackground(RAYWHITE);
-            DrawText("Aperte P (play/pause), N (next), B (prev), F (+10s), R (-10s), Q (sair)", 10, 10, 20, BLACK);
+            ClearBackground(BLACK);
 
             DrawText(
                 strlen(ctx.status->music.tags.title) > 0 
                 ? ctx.status->music.tags.title
                 : arena_get_by_index(&ctx.arenaSongs, agora),
-                10, 30, 20, BLACK
+                10, 10, 20, RAYWHITE
             );
 
+            drawTimer(
+                &timer,
+                ctx.status->music.currentSong,
+                (Rectangle){20, 230, 400, 20}
+            );
+
+            for (int i=0; i<3; i++){
+                m_DrawButton(buttons[i]);
+                if (m_CallbackButtonClicked(buttons[i])) buttons[i].onClick(&ctx);
+            } 
+
         EndDrawing();
+
+        buttons[0].label = ctx.status->isPaused ? "Play" : "Pause";
     }
 
     ray_close(&ctx);
+    pthread_join(music_thread, NULL);
     arena_free(ctx.arenaSongs.arena);
 
     return EXIT_SUCCESS;

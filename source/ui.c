@@ -14,6 +14,8 @@ void m_DrawButton(Button button) {
     );
 }
 
-void m_ClickCallback(Vector2 mouse, Rectangle *rect, void (*callback)()){
-    if (CheckCollisionPointRec(mouse, *rect)) callback();
+bool m_CallbackButtonClicked(Button button) {
+    return IsMouseButtonPressed(MOUSE_BUTTON_LEFT)
+           && CheckCollisionPointRec(GetMousePosition(), button.bounds);
 }
+
