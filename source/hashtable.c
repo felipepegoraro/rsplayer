@@ -48,7 +48,7 @@ void hs_free(HashTable *hs){
     hs = NULL;
 }
 
-size_t hs_insert(HashTable *hs, Music *value, const char *songName) {
+size_t hs_insert(HashTable *hs, RsMusic *value, const char *songName) {
     if (!hs || !value) return 0;
 
 

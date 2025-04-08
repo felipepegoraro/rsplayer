@@ -25,11 +25,11 @@ typedef struct ID3V2_Tags {
     char genre[T_ID3V2_MAX];    // TCON (Gênero)
 } ID3V2_Tags;
 
-#include <SDL2/SDL_mixer.h>
+#include "raylib.h"
 typedef struct {
     ID3V2_Tags tags;
-    Mix_Music *currentSong;
-} Music;
+    Music *currentSong;
+} RsMusic;
 
 // 10 bytes + data
 typedef struct {

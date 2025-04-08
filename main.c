@@ -1,17 +1,19 @@
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_mixer.h>
 #include <stdio.h>
 #include <string.h>
 #include <dirent.h>
 #include <stdlib.h>
 #include <limits.h>
+#include <unistd.h>
+#include <pthread.h>
 #include "./headers/arena.h"
 #include "./headers/id3.h"
+#include "./headers/ui.h"
+
 // #include "./headers/levenshtein.h"
 // #include "./headers/trie.h"
 // #include "./headers/queue.h"
 // #include "./headers/hashtable.h"
-#include "./headers/playlist.h"
+// #include "./headers/playlist.h"
 
 #define DEFAULT_DIR "/home/felipe/Músicas/"
 #define MAX_SONGS 100 
@@ -19,8 +21,10 @@
 typedef struct AppStatus {
     int indexSong;
     int isPaused;
-    Music music; // atual
+    RsMusic music; // atual
 } AppStatus;
+
+int agora = 0;
 
 typedef struct AppContext {
     AppStatus *status;
@@ -59,24 +63,32 @@ void read_dir_files(arena_t *arena, int max_songs)
 void cmd_play_pause(AppContext *ctx){
     if (ctx){
         int *ip = &ctx->status->isPaused;
-        if (*ip){Mix_ResumeMusic(); *ip=0;}
-        else {Mix_PauseMusic(); *ip=1;}
+        if (*ip){ResumeMusicStream(*ctx->status->music.currentSong); *ip=0;}
+        else {PauseMusicStream(*ctx->status->music.currentSong); *ip=1;}
     }
 }
 
-void cmd_seek_forward(AppContext *ctx){
-    if (ctx){
-        double currentPos = Mix_GetMusicPosition(ctx->status->music.currentSong);
-        Mix_SetMusicPosition(currentPos + 10);
-        printf("+10s\n");
+void cmd_seek_forward(AppContext *ctx) {
+    if (ctx && ctx->status && ctx->status->music.currentSong) {
+        Music *song = ctx->status->music.currentSong;
+        float current = GetMusicTimePlayed(*song);
+        float total = GetMusicTimeLength(*song);
+        float next = current + 10.0f;
+        if (next > total) next = total;
+        SeekMusicStream(*song, next);
+        printf("+10s (%.2fs / %.2fs)\n", next, total);
     }
 }
 
-void cmd_seek_backward(AppContext *ctx){
-    if (ctx){
-        double currentPos = Mix_GetMusicPosition(ctx->status->music.currentSong);
-        Mix_SetMusicPosition(currentPos - 10);
-        printf("-10s\n");
+
+void cmd_seek_backward(AppContext *ctx) {
+    if (ctx && ctx->status && ctx->status->music.currentSong) {
+        Music *song = ctx->status->music.currentSong;
+        float current = GetMusicTimePlayed(*song);
+        float next = current - 10.0f;
+        if (next < 0.0f) next = 0.0f;
+        SeekMusicStream(*song, next);
+        printf("-10s (%.2fs)\n", next);
     }
 }
 
@@ -89,27 +101,47 @@ void play_song(AppContext *ctx, const char *song_path) {
         return;
     }
 
-    if (ctx->status->music.currentSong) {
-        Mix_FreeMusic(ctx->status->music.currentSong);
-    }
-    
-    ctx->status->music.currentSong = Mix_LoadMUS(song_path);
-    if (!ctx->status->music.currentSong) {
-        printf("Falha ao carregar a música! Erro SDL_mixer: %s\n", Mix_GetError());
+    // vazamento de memória resolvido
+    // carrega música atual
+    Music tempMusic = LoadMusicStream(song_path);
+    if (!tempMusic.ctxData) {
+        printf("Erro ao carregar música: %s\n", song_path);
+        fclose(f);
         return;
     }
 
+    // descarrega música anterior
+    if (ctx->status->music.currentSong) {
+        StopMusicStream(*ctx->status->music.currentSong);
+        UnloadMusicStream(*ctx->status->music.currentSong);
+    }
+
+    // aloca na arena apenas o ponteiro para Music
+    Music *musicPtr = arena_alloc(ctx->arenaSongs.arena, sizeof(Music));
+    if (!musicPtr) {
+        printf("Erro de alocação\n");
+        UnloadMusicStream(tempMusic);
+        fclose(f);
+        return;
+    }
+
+    // move o Music real para a arena (sem sobrescrever depois)
+    memcpy(musicPtr, &tempMusic, sizeof(Music));
+    ctx->status->music.currentSong = musicPtr;
+
+    PlayMusicStream(*musicPtr);
+
+    ID3V2_Tags tg = id3_get_song_tags(f);
+    fclose(f);
+
+    ctx->status->music.currentSong = musicPtr;
+    ctx->status->music.tags = tg;
     ctx->status->isPaused = 0;
 
-    Mix_PlayMusic(ctx->status->music.currentSong, 1);
-
-    ID3V2_Tags tg =  id3_get_song_tags(f);
-
-    if (strlen(tg.title)>0 && strlen(tg.artist)>0 && strlen(tg.year)>0){
-        ctx->status->music.tags = tg;
-        printf("tocando: %s - %s (%s)\n", tg.title, tg.artist, tg.year);
+    if (strlen(tg.title) > 0 && strlen(tg.artist) > 0 && strlen(tg.year) > 0){
+        printf("Tocando: %s - %s (%s)\n", tg.title, tg.artist, tg.year);
     } else {
-        printf("tocando: %s\n", song_path);
+        printf("Tocando: %s\n", song_path);
     }
 }
 
@@ -120,7 +152,9 @@ void cmd_play_next_song(AppContext *ctx) {
     if (ctx){
         ctx->status->indexSong = (ctx->status->indexSong + 1) % ctx->arenaSongs.total;
         const char *next = arena_get_by_index(&ctx->arenaSongs, ctx->status->indexSong);
+        printf("next: %s\n", next);
         if (next) play_song(ctx, next);
+        agora++;
     }
 }
 
@@ -129,6 +163,7 @@ void cmd_play_prev_song(AppContext *ctx) {
         ctx->status->indexSong = (ctx->status->indexSong - 1 + ctx->arenaSongs.total) % ctx->arenaSongs.total;
         const char *prev = arena_get_by_index(&ctx->arenaSongs, ctx->status->indexSong);
         if (prev) play_song(ctx, prev);
+        agora--;
     }
 }
 
@@ -138,73 +173,61 @@ void cmd_play_prev_song(AppContext *ctx) {
     // tocar a musica.
 // }
 
-int sdl_init(void){
-    if (SDL_Init(SDL_INIT_AUDIO | SDL_INIT_VIDEO) < 0) {
-        printf("SDL não pôde ser inicializado! Erro SDL: %s\n", SDL_GetError());
-        return 1;
+int raylib_init(void){
+    InitAudioDevice();
+    if (!IsAudioDeviceReady()) {
+        printf("Erro ao inicializar o sistema de áudio da Raylib!\n");
+        return EXIT_FAILURE;
     }
 
-    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
-        printf("SDL_mixer não pôde ser inicializado! Erro SDL_mixer: %s\n", Mix_GetError());
-        return 1;
+    InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, PLAYER_NAME);
+    return EXIT_SUCCESS;
+}
+
+void ray_close(AppContext *ctx) {
+    if (ctx && ctx->status && ctx->status->music.currentSong) {
+        UnloadMusicStream(*ctx->status->music.currentSong);
+        ctx->status->music.currentSong = NULL;
     }
 
-    return 0;
+    CloseAudioDevice();
+    CloseWindow();
 }
 
-void sdl_close(AppContext *ctx){
-    Mix_FreeMusic(ctx->status->music.currentSong);
-    Mix_CloseAudio();
-    SDL_Quit();
-}
 
-void handle_user_input(AppContext *ctx, Commands *cmd, int cmd_count) {
-    char s;
+void *music_thread_fn(void *arg) {
+    AppContext *ctx = (AppContext*) arg;
 
-    while (Mix_PlayingMusic() || !ctx->status->isPaused){
-        SDL_Delay(100);
+    while (!WindowShouldClose()) {
+        if ((ctx->status->music.currentSong && IsMusicStreamPlaying(*ctx->status->music.currentSong)) || !ctx->status->isPaused) {
+            if (IsMusicReady(*ctx->status->music.currentSong)){
+                UpdateMusicStream(*ctx->status->music.currentSong);
+            }
 
-        if (!Mix_PlayingMusic()) cmd_play_next_song(ctx);
-        if (scanf(" %c", &s) != 1) continue;
-
-        for (int i = 0; i < cmd_count; i++) {
-            if (s == cmd[i].s) {
-                cmd[i].fn(ctx);
-                break;
+            if (!IsMusicStreamPlaying(*ctx->status->music.currentSong) && !ctx->status->isPaused) {
+                cmd_play_next_song(ctx);
             }
         }
 
-        if (s == 'q') break;
+        usleep(10000);
+    }
+
+    printf("close!\n");
+    return NULL;
+}
+
+void handle_user_input(AppContext *ctx, Commands *cmd, int cmd_count) {
+    for (int i = 0; i < cmd_count; i++) {
+        if (IsKeyPressed(cmd[i].s)) {
+            cmd[i].fn(ctx);
+            break;
+        }
     }
 }
 
 int main(void)
 {
-    Music ms = { .tags = { .version = 0, .size = 0, .year = "2020", .album = "album", .genre = "genre", .title = "musica1", .artist = "artist" }, .currentSong = NULL };
-    Music ms1 = { .tags = { .version = 0, .size = 0, .year = "2020", .album = "album", .genre = "genre", .title = "musica2", .artist = "artist" }, .currentSong = NULL };
-    Music ms2 = { .tags = { .version = 0, .size = 0, .year = "2020", .album = "xxxxx", .genre = "xxxx", .title = "musica3", .artist = "xxxxx" }, .currentSong = NULL };
-
-    // HashTable hs = hs_create();
-    // hs_insert(&hs, &ms, "ok");
-    // hs_insert(&hs, &ms1, "musica-null");
-    // hs_insert(&hs, &mss, "ok");
-    // (void)hs_search(&hs, 2867999238);
-    // (void)hs_search(&hs, 612476476);
-    // hs_free(&hs);
-    
-    Playlist p = playlist_init("play1", 0, &ms);
-    printf("pos init: len(%zu) index(%zu)\n", p.queue->len, p.current_index);
-    playlist_add(&p, &ms1);
-    printf("pos add ms1: len(%zu) index(%zu)\n", p.queue->len, p.current_index);
-    playlist_add(&p, &ms2);
-    printf("pos add ms2: len(%zu) index(%zu)\n", p.queue->len, p.current_index);
-    playlist_next(&p);
-    printf("pos next: len(%zu) index(%zu)\n", p.queue->len, p.current_index);
-    playlist_free(&p);
-
-    return 0 ;
-
-    if (sdl_init()!=0) return 1;
+    if (raylib_init()!=0) return 1;
 
     Arena *a = arena_create(ARENA_BLOCK_SIZE);
     arena_t arena = {0, a};
@@ -212,12 +235,11 @@ int main(void)
     read_dir_files(&arena, MAX_SONGS);
 
     Commands cmd[] = {
-        {'p', cmd_play_pause},
-        {'f', cmd_seek_forward},
-        {'r', cmd_seek_backward},
-        {'n', cmd_play_next_song},
-        {'b', cmd_play_prev_song}
-        // {'s', cmd_search_song}
+        {KEY_P, cmd_play_pause},
+        {KEY_F, cmd_seek_forward},
+        {KEY_R, cmd_seek_backward},
+        {KEY_N, cmd_play_next_song},
+        {KEY_B, cmd_play_prev_song}
     };
 
     AppStatus status = {
@@ -238,9 +260,28 @@ int main(void)
     const char *song = arena_get_by_index(&ctx.arenaSongs, 0);
     play_song(&ctx, song);
 
-    handle_user_input(&ctx, cmd, sizeof(cmd) / sizeof(cmd[0]));
+    pthread_t music_thread;
+    pthread_create(&music_thread, NULL, music_thread_fn, &ctx);
 
-    sdl_close(&ctx);
+    while (!WindowShouldClose()){
+        handle_user_input(&ctx, cmd, sizeof(cmd) / sizeof(cmd[0]));
+
+        BeginDrawing();
+            ClearBackground(RAYWHITE);
+            DrawText("Aperte P (play/pause), N (next), B (prev), F (+10s), R (-10s), Q (sair)", 10, 10, 20, BLACK);
+
+            DrawText(
+                strlen(ctx.status->music.tags.title) > 0 
+                ? ctx.status->music.tags.title
+                : arena_get_by_index(&ctx.arenaSongs, agora),
+                10, 30, 20, BLACK
+            );
+
+        EndDrawing();
+    }
+
+    ray_close(&ctx);
     arena_free(ctx.arenaSongs.arena);
-    return 0;
+
+    return EXIT_SUCCESS;
 }

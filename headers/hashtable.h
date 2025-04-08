@@ -14,7 +14,7 @@
 
 typedef struct entry {
     unsigned long key;
-    Music *music;
+    RsMusic *music;
     struct entry *next;
 } Entry;
 
@@ -28,7 +28,7 @@ typedef struct hashtable {
 HashTable hs_create(void);
 void hs_free(HashTable*);
 
-size_t hs_insert(HashTable *hs, Music *value, const char *songName);
+size_t hs_insert(HashTable *hs, RsMusic *value, const char *songName);
 Entry *hs_search(const HashTable *hs, unsigned long key);
 int hs_delete(HashTable*, unsigned long key);
 

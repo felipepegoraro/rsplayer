@@ -8,7 +8,7 @@
 typedef struct node {
     struct node *prev;
     struct node *next;
-    Music *music;
+    RsMusic *music;
 } Node;
 
 typedef struct {
@@ -19,10 +19,10 @@ typedef struct {
 } Queue;
 
 Node *q_node_new(Arena *arena);
-Queue q_create(Music *firstSong);
-void q_enqueue(Queue *queue, Music *song);
-Music *q_dequeue(Queue *queue);
-Music *q_peek(Queue *queue);
+Queue q_create(RsMusic *firstSong);
+void q_enqueue(Queue *queue, RsMusic *song);
+RsMusic *q_dequeue(Queue *queue);
+RsMusic *q_peek(Queue *queue);
 void q_free(Queue *queue);
 
 #endif

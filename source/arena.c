@@ -19,22 +19,46 @@ Arena *arena_create(size_t block_size){
     return a;
 }
 
-void *arena_alloc(Arena *a, size_t size){
-    if (a->used + size > a->total_size) {
-        // só cria um novo bloco se não houver espaço suficiente
-        size_t new_block_size = (size > ARENA_BLOCK_SIZE) ? size : ARENA_BLOCK_SIZE;
-        Arena *new_arena = arena_create(new_block_size);
-        if (!new_arena) return NULL;
+void *arena_alloc(Arena *a, size_t size) {
+    Arena *current = a;
 
-        new_arena->next = a;
-        a = new_arena;
+    while (current) {
+        if (current->used + size <= current->total_size) {
+            void *ptr = current->memory + current->used;
+            current->used += size;
+            return ptr;
+        }
+        if (!current->next) break;
+        current = current->next;
     }
 
-    void *ptr = a->memory + a->used;
-    a->used += size;
+    size_t new_block_size = (size > ARENA_BLOCK_SIZE) ? size : ARENA_BLOCK_SIZE;
+    Arena *new_arena = arena_create(new_block_size);
+    if (!new_arena) return NULL;
 
+    current->next = new_arena;
+    void *ptr = new_arena->memory;
+    new_arena->used = size;
     return ptr;
 }
+
+
+// void *arena_alloc(Arena *a, size_t size){
+//     if (a->used + size > a->total_size) {
+//         // só cria um novo bloco se não houver espaço suficiente
+//         size_t new_block_size = (size > ARENA_BLOCK_SIZE) ? size : ARENA_BLOCK_SIZE;
+//         Arena *new_arena = arena_create(new_block_size);
+//         if (!new_arena) return NULL;
+//
+//         new_arena->next = a;
+//         a = new_arena;
+//     }
+//
+//     void *ptr = a->memory + a->used;
+//     a->used += size;
+//
+//     return ptr;
+// }
 
 void arena_free(Arena *a) {
     while (a) {
@@ -44,7 +68,12 @@ void arena_free(Arena *a) {
         free(a);
         a = next;
     }
-    free(a);
+    if (!a){
+        printf("OK sem free\n");
+    } else {
+        printf("OK free\n");
+        free(a);
+    }
     a = NULL;
 }
 

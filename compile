@@ -1,7 +1,8 @@
 #!/bin/bash
-FLAGS="-Wall -Wextra -Werror -Wshadow -Wuninitialized"
+# FLAGS="-Wall -Wextra -Werror -Wshadow -Wuninitialized"
+FLAGS=""
 
 SRC="main.c"
 SRC_FILES="source/arena.c ./source/id3.c ./source/trie.c ./source/queue.c ./source/hashtable.c ./source/playlist.c"
 
-gcc ${FLAGS} ${SRC} ${SRC_FILES} -lSDL2 -lSDL2_mixer -lssl -lcrypto
+gcc ${FLAGS} ${SRC} ${SRC_FILES} -lraylib -lssl -lcrypto -lpthread

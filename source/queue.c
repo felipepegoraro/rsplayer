@@ -12,7 +12,7 @@ Node *q_node_new(Arena *arena){
     return n;
 }
 
-Queue q_create(Music *firstSong){
+Queue q_create(RsMusic *firstSong){
     Queue q;
     q.arena = arena_create(ARENA_BLOCK_SIZE);
     if (!q.arena) {
@@ -35,7 +35,7 @@ Queue q_create(Music *firstSong){
     return q;
 }
 
-void q_enqueue(Queue *queue, Music *song){
+void q_enqueue(Queue *queue, RsMusic *song){
     if (!queue || !queue->arena) return;
      
     Node *newNode = q_node_new(queue->arena);
@@ -55,11 +55,11 @@ void q_enqueue(Queue *queue, Music *song){
     queue->len++;
 }
 
-Music *q_dequeue(Queue *queue){
+RsMusic *q_dequeue(Queue *queue){
     if (!queue || !queue->arena || queue->len == 0) 
         return NULL;
 
-    Music *song = queue->root->music;
+    RsMusic *song = queue->root->music;
     printf("removendo musica: %s\n", song->tags.title);
 
     if (queue->len == 1){
@@ -76,7 +76,7 @@ Music *q_dequeue(Queue *queue){
     return song;
 }
 
-Music *q_peek(Queue *queue) {
+RsMusic *q_peek(Queue *queue) {
     return (queue && queue->root)
         ? queue->root->music
         : NULL;

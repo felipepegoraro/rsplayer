@@ -1,6 +1,6 @@
 #include "../headers/playlist.h"
 
-Playlist playlist_init(const char *name, int is_q, Music *music){
+Playlist playlist_init(const char *name, int is_q, RsMusic *music){
     Playlist p;
     p.queue = malloc(sizeof(Queue));
     *p.queue = q_create(music);
@@ -12,7 +12,7 @@ Playlist playlist_init(const char *name, int is_q, Music *music){
     return p;
 }
 
-Music *playlist_next(Playlist *p){
+RsMusic *playlist_next(Playlist *p){
     if (!p || !p->queue || p->current_index >= p->queue->len) {
         return NULL;
     }
@@ -43,7 +43,7 @@ Music *playlist_next(Playlist *p){
     return NULL;
 }
 
-Music *playlist_prev(Playlist *p) {
+RsMusic *playlist_prev(Playlist *p) {
     if (!p || !p->queue || p->current_index == 0) {
         return NULL;
     }
@@ -71,7 +71,7 @@ Music *playlist_prev(Playlist *p) {
     return NULL;
 }
 
-void playlist_add(Playlist *p, Music *new_song){
+void playlist_add(Playlist *p, RsMusic *new_song){
     if (!p || !new_song) return;
 
     printf("q_enqueue...\n");
