@@ -1,4 +1,5 @@
 #include "../headers/timer.h"
+#include <math.h>
 
 void updateTimer(Timer *t, float played, float total){
     int playedSec = (int)played;
@@ -31,16 +32,19 @@ Timer newTimer(float played, float total){
 
 
 void formatTimerString(Timer *t, char *buffer, size_t bufferSize) {
-    if (t){
-        snprintf(
-            buffer, bufferSize,
-            "%d:%02d / %d:%02d",
-            t->min_played,
-            t->sec_played,
-            t->min_total,
-            t->sec_total
-        );
+    if (!t) {
+        printf("???????\n");
+        return;
     }
+
+    snprintf(
+        buffer, bufferSize,
+        "%d:%02d / %d:%02d",
+        t->min_played,
+        t->sec_played,
+        t->min_total,
+        t->sec_total
+    );
 }
 
 
@@ -48,13 +52,16 @@ float getTimerProgress(Timer *t){
     if (t){
         float pl = t->min_played * 60 + t->sec_played;
         float tt = t->min_total * 60 + t->sec_total;
+
+        if (pl <= 0.0f || tt <= 0.0f || isnan(tt) || isnan(pl) || isinf(tt) || isinf(pl))
+            return 0.0f;
+
         return tt == 0 ? 0.0f : (float)(pl / tt * 100.0f);
     }
 
+    printf("??????????????????????????????\n");
     return 0.0f;
 }
-
-
 
 void updateTimerFromClick(Timer *timer, Music *music, Rectangle bar) {
     if (!timer || !music) return;
@@ -67,17 +74,23 @@ void updateTimerFromClick(Timer *timer, Music *music, Rectangle bar) {
             float totalSeconds = GetMusicTimeLength(*music);
             float newTime = porc * totalSeconds;
 
+            // while (!IsMusicReady(*music));
+
             if (newTime < totalSeconds) {
                 PauseMusicStream(*music);
                 SeekMusicStream(*music, newTime);
                 ResumeMusicStream(*music);
+                updateTimer(timer, newTime, totalSeconds);
             }
         }
     }
 }
 
 void drawTimer(Timer *timer, Music *music, Rectangle rect){
-    if (!timer || !music) return;
+    if (!timer || !music) {
+        printf("okokokok\n");
+        return;
+    }
 
     char percBuffer[5];
     char timerBuffer[32];
