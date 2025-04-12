@@ -8,27 +8,18 @@ void updateTimer(Timer *t, float played, float total){
     t->secTotal = (int)total;;
 }
 
-
-Timer newTimer(float played, float total){
-    Timer t = {0};
-    printf("played: %d", t.secPlayed);
-    updateTimer(&t, played, total);
-    printf("played: %d", t.secPlayed);
-    return t;
-}
-
 void resetTimer(Timer *t) {
-    if (t) {
-        *t = (Timer) {
-            .startTime = GetTime(),
-            .pauseTime = 0.0,
-            .lastPause = 0.0,
-            .seekOffset = 0.0,
-            .secPlayed = 0,
-            .secTotal = 0,
-            .isPaused = 0
-        };
-    }
+    if (!t) return;
+
+    *t = (Timer) {
+        .startTime = GetTime(),
+        .pauseTime = 0.0,
+        .lastPause = 0.0,
+        .seekOffset = 0.0,
+        .secPlayed = 0,
+        .secTotal = 0,
+        .isPaused = 0
+    };
 }
 
 void formatTimerString(Timer *t, char *buffer, size_t bufferSize) {
@@ -43,23 +34,21 @@ void formatTimerString(Timer *t, char *buffer, size_t bufferSize) {
         t->secPlayed / 60,
         t->secPlayed % 60,
         t->secTotal  / 60,
-        t->secTotal  % 60
+        t->secTotal  % 60 
     );
 }
 
 
 float getTimerProgress(const Timer *t){
-    if (t){
-        float pl = t->secPlayed; 
-        float tt = t->secTotal;
+    if (!t) return 0.0f;
 
-        if (pl <= 0.0f || tt <= 0.0f || isnan(tt) || isnan(pl) || isinf(tt) || isinf(pl))
-            return 0.0f;
+    float pl = t->secPlayed; 
+    float tt = t->secTotal;
 
-        return (pl / tt * 100.0f);
-    }
+    if (pl <= 0.0f || tt <= 0.0f || isnan(tt) || isnan(pl) || isinf(tt) || isinf(pl))
+        return 0.0f;
 
-    return 0.0f;
+    return (pl / tt * 100.0f);
 }
 
 #include <stdio.h> // para printf
@@ -87,9 +76,7 @@ void updateTimerFromClick(Timer *timer, Music *music, Rectangle bar) {
                 SeekMusicStream(*music, newTime);
                 ResumeMusicStream(*music);
                 updateTimer(timer, newTime, totalSeconds);
-                timer->seekOffset = newTime;
 
-                // Print updated timer
                 printf("Timer updated:\n");
                 printf("  secPlayed: %d\n", timer->secPlayed);
                 printf("  secTotal:  %d\n", timer->secTotal);
@@ -98,6 +85,12 @@ void updateTimerFromClick(Timer *timer, Music *music, Rectangle bar) {
                 printf("  lastPause: %.2f\n", timer->lastPause);
                 printf("  seekOffset: %.2f\n", timer->seekOffset);
                 printf("  isPaused: %s\n", timer->isPaused ? "true" : "false");
+            }
+
+            timer->seekOffset = newTime;
+            if (timer->isPaused){
+                timer->lastPause = GetTime();
+                timer->pauseTime = 0.0;
             }
         }
     }
@@ -116,7 +109,7 @@ void drawTimer(Timer *timer, Music *music, Rectangle rect){
     snprintf(percBuffer, sizeof(percBuffer), "%.0f%%", musicProgress);
     formatTimerString(timer, timerBuffer, sizeof(timerBuffer));
 
-    DrawText(timerBuffer, 20, 200, 20, WHITE);
+    DrawText(timerBuffer, 20, rect.y-40, 20, WHITE);
     DrawText(percBuffer, 430, rect.y, 20, WHITE);
 
     DrawRectangle(rect.x, rect.y, rect.width, rect.height, GRAY);
@@ -147,11 +140,11 @@ void resumeTimer(Timer *timer){
     timer->isPaused = false;
 }
 
-int getTimeLength(const Music m){
-    return m.frameCount / (m.stream.sampleRate * m.stream.channels);
+float getTimeLength(const Music m){
+    return (float)m.frameCount / (float)(m.stream.sampleRate * m.stream.channels);
 }
 
-int getTimePlayed(Timer t){
+float getTimePlayed(const Timer t){
     double now = GetTime();
     double base = t.seekOffset;
 

@@ -21,6 +21,9 @@
 
 #define DEFAULT_DIR "/home/felipe/Músicas/"
 #define MAX_SONGS 100
+#define MAX_START_ATTEMPTS 20
+#define MUSIC_READY_SLEEP_TIME 100000   // 100ms esperar musica ficar pronta
+#define MUSIC_THREAD_SLEEP_TIME 10000   // 10ms loop do thread de musica
 
 typedef struct PlayerState {
     int indexSong;
@@ -100,19 +103,21 @@ void m_cmdPlayPause(void *context){
 
 void m_cmdSeekForward(void *context) {
     AppContext *ctx = (AppContext*)context;
+    Tooltip *tooltip = &ctx->status->tooltip;
+    Timer *timer = &ctx->status->player.timer;
 
     if (ctx && ctx->status && ctx->status->music.currentSong) {
         Music *song = ctx->status->music.currentSong;
 
-        float current = getTimePlayed(ctx->status->player.timer);
+        float current = getTimePlayed(*timer);
         float total = getTimeLength(*song);
 
         if (!((!isnan(current) && current >= 0.0f) || 
               (!isnan(total) && total >= 0.0f))
         ){
-            ctx->status->tooltip.message = "Erro ao carregar.";
-            ctx->status->tooltip.visible = true;
-            ctx->status->tooltip.color = ERROR_COLOR;
+            tooltip->message = "Erro ao carregar.";
+            tooltip->visible = true;
+            tooltip->color = ERROR_COLOR;
             return;
         }
 
@@ -120,35 +125,42 @@ void m_cmdSeekForward(void *context) {
         if (next > total) next = total;
         SeekMusicStream(*song, next);
 
-        ctx->status->tooltip.message = "+10s";
-        ctx->status->tooltip.visible = true;
-        ctx->status->tooltip.color = TIP_COLOR;
-        ctx->status->player.timer.seekOffset += 10;
+        tooltip->message = "+10s";
+        tooltip->visible = true;
+        tooltip->color = TIP_COLOR;
+        timer->seekOffset += 10;
     }
 }
 
 
 void m_cmdSeekBackward(void *context) {
     AppContext *ctx = (AppContext*)context;
+    Tooltip *tooltip = &ctx->status->tooltip;
+    Timer *timer = &ctx->status->player.timer;
+    Music *music = ctx->status->music.currentSong;
 
-    if (ctx && ctx->status && ctx->status->music.currentSong) {
-        Music *song = ctx->status->music.currentSong;
+    if (ctx && ctx->status && music) {
 
-        float next = getTimePlayed(ctx->status->player.timer) - 10.0f;
-        if (!(!isnan(next) && next >= 0.0f)){
-            ctx->status->tooltip.message = "Erro ao carregar.";
-            ctx->status->tooltip.visible = true;
-            ctx->status->tooltip.color = ERROR_COLOR;
+        float back = getTimePlayed(*timer) - 10.0f;
+        if (isnan(back)){
+            tooltip->message = "Erro ao carregar.";
+            tooltip->visible = true;
+            tooltip->color = ERROR_COLOR;
             return;
         }
 
-        if (next < 0.0f) next = 0.0f;
-        SeekMusicStream(*song, next);
+        timer->seekOffset -= 10;
 
-        ctx->status->tooltip.message = "-10s";
-        ctx->status->tooltip.visible = true;
-        ctx->status->tooltip.color = TIP_COLOR;
-        ctx->status->player.timer.seekOffset -= 10;
+        if (back <= 0.0f) {
+            back = 0.0f;
+            resetTimer(timer);
+        }
+
+        SeekMusicStream(*music, back);
+
+        tooltip->message = "-10s";
+        tooltip->visible = true;
+        tooltip->color = TIP_COLOR;
     }
 }
 
@@ -159,11 +171,12 @@ static FILE *m_openSongFile(const char *songPath) {
 }
 
 static void m_stopAndUnloadPreviousSong(AppContext *ctx) {
-    if (ctx->status->music.currentSong) {
-        StopMusicStream(*ctx->status->music.currentSong);
-        while (!IsMusicReady(*ctx->status->music.currentSong));
-        UnloadMusicStream(*ctx->status->music.currentSong);
-    }
+    if (!ctx || !ctx->status->music.currentSong) return;
+    Music *m = ctx->status->music.currentSong;
+
+    StopMusicStream(*m);
+    while (!IsMusicReady(*m));
+    UnloadMusicStream(*m);
 }
 
 static Music *m_loadNewSong(AppContext *ctx, const char *songPath, FILE *f) {
@@ -188,8 +201,8 @@ static Music *m_loadNewSong(AppContext *ctx, const char *songPath, FILE *f) {
 
 static bool m_waitUntilMusicReady(Music *musicPtr) {
     int attempts = 0;
-    while (!IsMusicReady(*musicPtr) && attempts < 30) {
-        usleep(100000);
+    while (!IsMusicReady(*musicPtr) && attempts < MAX_START_ATTEMPTS) {
+        usleep(MUSIC_READY_SLEEP_TIME);
         attempts++;
     }
 
@@ -406,22 +419,25 @@ void m_rayClose(AppContext *ctx) {
     CloseWindow();
 }
 
-
 void *m_musicThreadFn(void *context) {
     AppContext *ctx = (AppContext*) context;
+    if (!ctx) return NULL;
+
+    Music *music = ctx->status->music.currentSong;
 
     while (!WindowShouldClose()) {
         pthread_mutex_lock(&ctx->timer_mutex);
-        if (ctx->status->music.currentSong && !ctx->status->player.timer.isPaused) {
-            if (IsMusicReady(*ctx->status->music.currentSong)){
-                UpdateMusicStream(*ctx->status->music.currentSong);
+        if (music && !ctx->status->player.timer.isPaused) {
+            if (IsMusicReady(*music)){
+                UpdateMusicStream(*music);
             }
 
             float played = getTimePlayed(ctx->status->player.timer);
-            float total = getTimeLength(*ctx->status->music.currentSong);
+            float total = getTimeLength(*music);
 
             if (!isnan(played) && !isnan(total) && isfinite(played) && isfinite(total)) {
                 if (played > 0.1f && (total - played) < 0.1f) {
+                    printf("OK");
                     m_cmdPlayNextSong(ctx);
                     printf("NEXT FUCKING SONG!\n");
                 } else {
@@ -432,7 +448,7 @@ void *m_musicThreadFn(void *context) {
         }
 
         pthread_mutex_unlock(&ctx->timer_mutex);
-        usleep(10000);
+        usleep(MUSIC_THREAD_SLEEP_TIME);
     }
 
     printf("close!\n");
@@ -453,6 +469,15 @@ Button buttons[] = {
     { .bounds = (Rectangle){270, 50, 100, 40}, .color = DARKBLUE, .label = "Next", .onClick = m_cmdPlayNextSong },
     { .bounds = (Rectangle){50, 50, 100, 40}, .color = DARKBLUE, .label = "Prev", .onClick = m_cmdPlayPrevSong }
 };
+
+void drawTrackCounter(size_t current, size_t total, Vector2 pos){
+    char trackInfo[16];
+    snprintf(trackInfo, sizeof(trackInfo), "%zu/%zu", current+1, total);
+
+    int textWidth = MeasureText(trackInfo, FONT_SIZE);
+    int textX = pos.x - textWidth - 5;
+    DrawText(trackInfo, textX, pos.y, FONT_SIZE, WHITE);
+}
 
 int main(void)
 {
@@ -478,7 +503,7 @@ int main(void)
             .indexSong = 0,
             .isMuted = 0,
             .volume = 1.0f,
-            .timer = newTimer(0.0, 0.0)
+            .timer = {0}
         },
         .tooltip = { 
             .visible = false,
@@ -523,15 +548,24 @@ int main(void)
                 strlen(ctx.status->music.tags.title) > 0 
                 ? ctx.status->music.tags.title
                 : arena_get_by_index(&ctx.arenaSongs, ctx.status->player.indexSong),
-                10, 10, 20, RAYWHITE
+                10, 10, FONT_SIZE, RAYWHITE
             );
 
             DrawRectangle(SCREEN_WIDTH-GAP*2, SCREEN_HEIGHT-GAP*2, GAP, GAP, IsMusicReady(*ctx.status->music.currentSong) ? GREEN : RED);
 
+            drawTrackCounter(
+                ctx.status->player.indexSong,
+                ctx.arenaSongs.total,
+                (Vector2){
+                    .x = SCREEN_WIDTH - GAP * 3,
+                    .y = SCREEN_HEIGHT - FONT_SIZE/1.5f - GAP
+                }
+            );
+
             drawTimer(
                 &ctx.status->player.timer,
                 currentMusic,
-                (Rectangle){20, 230, 400, 20}
+                (Rectangle){20, SCREEN_HEIGHT-4*GAP, 400, 20}
             );
 
             for (int i=0; i<3; i++){

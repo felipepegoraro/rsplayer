@@ -15,8 +15,6 @@ typedef struct {
     bool   isPaused;
 } Timer;
 
-Timer newTimer(float played, float total);
-
 void updateTimer(Timer *t, float played, float total);
 void updateTimerFromClick(Timer *timer, Music *music, Rectangle bar);
 
@@ -29,8 +27,8 @@ void drawTimer(Timer *timer, Music *music, Rectangle rect);
 void pauseTimer(Timer *timer);
 void resumeTimer(Timer *timer);
 
-int getTimeLength(const Music m);
-int getTimePlayed(Timer t);
+float getTimeLength(const Music m);
+float getTimePlayed(const Timer t);
 float getTimerProgress(const Timer *t);
 
 #endif
