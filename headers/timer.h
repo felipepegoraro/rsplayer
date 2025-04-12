@@ -5,19 +5,32 @@
 #include "raylib.h"
 
 typedef struct {
-    int sec_played; // segundos
-    int min_played; // minutos
-    int min_total;
-    int sec_total; // min_played:sec_played / min_total:sec_total
+    int secPlayed; // tocaods segundos
+    int secTotal;  // min_played:sec_played / min_total:sec_total
+
+    double startTime;
+    double pauseTime;
+    double lastPause;
+    double seekOffset;
+    bool   isPaused;
 } Timer;
 
-void updateTimer(Timer *t, float played, float total);
 Timer newTimer(float played, float total);
-void resetTimer(Timer *t);
+
 void updateTimer(Timer *t, float played, float total);
-void formatTimerString(Timer *t, char *buffer, size_t bufferSize);
-float getTimerProgress(Timer *t);
 void updateTimerFromClick(Timer *timer, Music *music, Rectangle bar);
+
+void resetTimer(Timer *t);
+
+void formatTimerString(Timer *t, char *buffer, size_t bufferSize);
+
 void drawTimer(Timer *timer, Music *music, Rectangle rect);
+
+void pauseTimer(Timer *timer);
+void resumeTimer(Timer *timer);
+
+int getTimeLength(const Music m);
+int getTimePlayed(Timer t);
+float getTimerProgress(const Timer *t);
 
 #endif

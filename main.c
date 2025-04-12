@@ -27,6 +27,7 @@ typedef struct PlayerState {
     int isPaused;
     int isMuted;
     float volume;
+    Timer timer;
 } PlayerState;
 
 typedef struct AppStatus {
@@ -38,6 +39,7 @@ typedef struct AppStatus {
 typedef struct AppContext {
     AppStatus *status;
     arena_t arenaSongs;
+    pthread_mutex_t timer_mutex;
     // HashTable *songs
 } AppContext;
 
@@ -82,9 +84,18 @@ void m_cmdPlayPause(void *context){
     AppContext *ctx = (AppContext*)context;
     if (!ctx) return;
 
-    int *ip = &ctx->status->player.isPaused;
-    if (*ip){ResumeMusicStream(*ctx->status->music.currentSong); *ip=0;}
-    else {PauseMusicStream(*ctx->status->music.currentSong); *ip=1;}
+    pthread_mutex_lock(&ctx->timer_mutex);
+    int ip = ctx->status->player.timer.isPaused;
+    if (ip){
+        ResumeMusicStream(*ctx->status->music.currentSong);
+        resumeTimer(&ctx->status->player.timer);
+        ip=0;
+    } else {
+        PauseMusicStream(*ctx->status->music.currentSong);
+        pauseTimer(&ctx->status->player.timer);
+        ip=1;
+    }
+    pthread_mutex_unlock(&ctx->timer_mutex);
 }
 
 void m_cmdSeekForward(void *context) {
@@ -93,8 +104,8 @@ void m_cmdSeekForward(void *context) {
     if (ctx && ctx->status && ctx->status->music.currentSong) {
         Music *song = ctx->status->music.currentSong;
 
-        float current = GetMusicTimePlayed(*song);
-        float total = GetMusicTimeLength(*song);
+        float current = getTimePlayed(ctx->status->player.timer);
+        float total = getTimeLength(*song);
 
         if (!((!isnan(current) && current >= 0.0f) || 
               (!isnan(total) && total >= 0.0f))
@@ -112,6 +123,7 @@ void m_cmdSeekForward(void *context) {
         ctx->status->tooltip.message = "+10s";
         ctx->status->tooltip.visible = true;
         ctx->status->tooltip.color = TIP_COLOR;
+        ctx->status->player.timer.seekOffset += 10;
     }
 }
 
@@ -122,7 +134,7 @@ void m_cmdSeekBackward(void *context) {
     if (ctx && ctx->status && ctx->status->music.currentSong) {
         Music *song = ctx->status->music.currentSong;
 
-        float next = GetMusicTimePlayed(*song) - 10.0f;
+        float next = getTimePlayed(ctx->status->player.timer) - 10.0f;
         if (!(!isnan(next) && next >= 0.0f)){
             ctx->status->tooltip.message = "Erro ao carregar.";
             ctx->status->tooltip.visible = true;
@@ -136,67 +148,187 @@ void m_cmdSeekBackward(void *context) {
         ctx->status->tooltip.message = "-10s";
         ctx->status->tooltip.visible = true;
         ctx->status->tooltip.color = TIP_COLOR;
+        ctx->status->player.timer.seekOffset -= 10;
     }
 }
 
-void m_playSong(AppContext *ctx, const char *song_path) {
-    if (!ctx || !song_path) return;
+static FILE *m_openSongFile(const char *songPath) {
+    FILE *f = id3_read_song_file(songPath);
+    if (!f) printf("erro inesperado\n");
+    return f;
+}
 
-    FILE *f = id3_read_song_file(song_path);
-    if (!f) {
-        printf("erro inesperado\n");
-        return;
-    }
-
-    // vazamento de memória resolvido
-    // carrega música atual
-    Music tempMusic = LoadMusicStream(song_path);
-    if (!tempMusic.ctxData) {
-        printf("Erro ao carregar música: %s\n", song_path);
-        fclose(f);
-        return;
-    }
-
-    // descarrega música anterior
+static void m_stopAndUnloadPreviousSong(AppContext *ctx) {
     if (ctx->status->music.currentSong) {
         StopMusicStream(*ctx->status->music.currentSong);
+        while (!IsMusicReady(*ctx->status->music.currentSong));
         UnloadMusicStream(*ctx->status->music.currentSong);
     }
+}
 
-    // aloca na arena apenas o ponteiro para Music
+static Music *m_loadNewSong(AppContext *ctx, const char *songPath, FILE *f) {
+    Music tempMusic = LoadMusicStream(songPath);
+    if (!tempMusic.ctxData) {
+        printf("Erro ao carregar musica: %s\n", songPath);
+        fclose(f);
+        return NULL;
+    }
+
     Music *musicPtr = arena_alloc(ctx->arenaSongs.arena, sizeof(Music));
     if (!musicPtr) {
         printf("Erro de alocação\n");
         UnloadMusicStream(tempMusic);
         fclose(f);
-        return;
+        return NULL;
     }
 
-    // move o Music real para a arena (sem sobrescrever depois)
     memcpy(musicPtr, &tempMusic, sizeof(Music));
-    ctx->status->music.currentSong = musicPtr;
+    return musicPtr;
+}
 
-    while (!IsMusicReady(*musicPtr));
+static bool m_waitUntilMusicReady(Music *musicPtr) {
+    int attempts = 0;
+    while (!IsMusicReady(*musicPtr) && attempts < 30) {
+        usleep(100000);
+        attempts++;
+    }
+
+    if (!IsMusicReady(*musicPtr)) {
+        printf("Falha ao preparar música\n");
+        UnloadMusicStream(*musicPtr);
+        return false;
+    }
+    return true;
+}
+
+static void m_prepareAndPlayMusic(AppContext *ctx, Music *musicPtr) {
+    pthread_mutex_lock(&ctx->timer_mutex);
+    resetTimer(&ctx->status->player.timer);
+    pthread_mutex_unlock(&ctx->timer_mutex);
+
     PlayMusicStream(*musicPtr);
 
     SetMusicVolume(*musicPtr, ctx->status->player.isMuted 
         ? 0.0f 
         : ctx->status->player.volume
     );
+}
 
+static void m_loadAndPrintTags(AppContext *ctx, FILE *f, const char *songPath) {
     ID3V2_Tags tg = id3_get_song_tags(f);
     fclose(f);
 
-    ctx->status->music.currentSong = musicPtr;
     ctx->status->music.tags = tg;
-    ctx->status->player.isPaused = 0;
 
     if (strlen(tg.title) > 0 && strlen(tg.artist) > 0 && strlen(tg.year) > 0){
         printf("Tocando: %s - %s (%s)\n", tg.title, tg.artist, tg.year);
     } else {
-        printf("Tocando: %s\n", song_path);
+        printf("Tocando: %s\n", songPath);
     }
 }
+
+void m_playSong(AppContext *ctx, const char *songPath) {
+    if (!ctx || !songPath) return;
+
+    FILE *f = m_openSongFile(songPath);
+    if (!f) return;
+
+    m_stopAndUnloadPreviousSong(ctx);
+
+    Music *musicPtr = m_loadNewSong(ctx, songPath, f);
+    if (!musicPtr) return;
+
+    if (!m_waitUntilMusicReady(musicPtr)) {
+        fclose(f);
+        return;
+    }
+
+    ctx->status->music.currentSong = musicPtr;
+
+    m_prepareAndPlayMusic(ctx, musicPtr);
+    m_loadAndPrintTags(ctx, f, songPath);
+}
+
+
+// void m_plaaaaaaySong(AppContext *ctx, const char *song_path) {
+//     if (!ctx || !song_path) return;
+//
+//     FILE *f = id3_read_song_file(song_path);
+//     if (!f) {
+//         printf("erro inesperado\n");
+//         return;
+//     }
+//
+//     if (ctx->status->music.currentSong) {
+//         StopMusicStream(*ctx->status->music.currentSong);
+//         while (!IsMusicReady(*ctx->status->music.currentSong));
+//         UnloadMusicStream(*ctx->status->music.currentSong);
+//     }
+//
+//     // vazamento de memória resolvido
+//     // carrega música atual
+//     Music tempMusic = LoadMusicStream(song_path);
+//     if (!tempMusic.ctxData) {
+//         printf("Erro ao carregar música: %s\n", song_path);
+//         fclose(f);
+//         return;
+//     }
+//
+//     // // descarrega música anterior
+//     // if (ctx->status->music.currentSong) {
+//     //     StopMusicStream(*ctx->status->music.currentSong);
+//     //     UnloadMusicStream(*ctx->status->music.currentSong);
+//     // }
+//
+//     // aloca na arena apenas o ponteiro para Music
+//     Music *musicPtr = arena_alloc(ctx->arenaSongs.arena, sizeof(Music));
+//     if (!musicPtr) {
+//         printf("Erro de alocação\n");
+//         UnloadMusicStream(tempMusic);
+//         fclose(f);
+//         return;
+//     }
+//
+//     // move o Music real para a arena (sem sobrescrever depois)
+//     memcpy(musicPtr, &tempMusic, sizeof(Music));
+//     ctx->status->music.currentSong = musicPtr;
+//
+//     int attempts = 0;
+//     while (!IsMusicReady(*musicPtr) && attempts < 30) {
+//         usleep(100000);
+//         attempts++;
+//     }
+//
+//     if (!IsMusicReady(*musicPtr)) {
+//         printf("Falha ao preparar música\n");
+//         UnloadMusicStream(*musicPtr);
+//         fclose(f);
+//         return;
+//     }
+//
+//     pthread_mutex_lock(&ctx->timer_mutex);
+//     resetTimer(&ctx->status->player.timer);
+//     pthread_mutex_unlock(&ctx->timer_mutex);
+//
+//     PlayMusicStream(*musicPtr);
+//
+//     SetMusicVolume(*musicPtr, ctx->status->player.isMuted 
+//         ? 0.0f 
+//         : ctx->status->player.volume
+//     );
+//
+//     ID3V2_Tags tg = id3_get_song_tags(f);
+//     fclose(f);
+//
+//     ctx->status->music.currentSong = musicPtr;
+//     ctx->status->music.tags = tg;
+//
+//     if (strlen(tg.title) > 0 && strlen(tg.artist) > 0 && strlen(tg.year) > 0){
+//         printf("Tocando: %s - %s (%s)\n", tg.title, tg.artist, tg.year);
+//     } else {
+//         printf("Tocando: %s\n", song_path);
+//     }
+// }
 
 
 // TODO: playlist (prev/next deve verificar contexto)
@@ -279,25 +411,27 @@ void *m_musicThreadFn(void *context) {
     AppContext *ctx = (AppContext*) context;
 
     while (!WindowShouldClose()) {
-        if (ctx->status->music.currentSong && !ctx->status->player.isPaused) {
+        pthread_mutex_lock(&ctx->timer_mutex);
+        if (ctx->status->music.currentSong && !ctx->status->player.timer.isPaused) {
             if (IsMusicReady(*ctx->status->music.currentSong)){
                 UpdateMusicStream(*ctx->status->music.currentSong);
             }
 
-            float played = GetMusicTimePlayed(*ctx->status->music.currentSong);
-            float total = GetMusicTimeLength(*ctx->status->music.currentSong);
+            float played = getTimePlayed(ctx->status->player.timer);
+            float total = getTimeLength(*ctx->status->music.currentSong);
 
             if (!isnan(played) && !isnan(total) && isfinite(played) && isfinite(total)) {
                 if (played > 0.1f && (total - played) < 0.1f) {
                     m_cmdPlayNextSong(ctx);
                     printf("NEXT FUCKING SONG!\n");
                 } else {
-                    printf("thread played: %.0f\n", played);
+                    // printf("thread played: %.0f\n", played);
                 }
 
             }         
         }
 
+        pthread_mutex_unlock(&ctx->timer_mutex);
         usleep(10000);
     }
 
@@ -342,9 +476,9 @@ int main(void)
     AppStatus status = {
         .player = {
             .indexSong = 0,
-            .isPaused = 0,
             .isMuted = 0,
             .volume = 1.0f,
+            .timer = newTimer(0.0, 0.0)
         },
         .tooltip = { 
             .visible = false,
@@ -358,7 +492,8 @@ int main(void)
 
     AppContext ctx = {
         .arenaSongs = arena,
-        .status = &status
+        .status = &status,
+        .timer_mutex = PTHREAD_MUTEX_INITIALIZER
     };
 
     // TODO: fuzzy finder para selecionar mppusica (Levenshtein Distance ou Trie)
@@ -369,16 +504,17 @@ int main(void)
     pthread_create(&music_thread, NULL, m_musicThreadFn, &ctx);
 
     Music *currentMusic = ctx.status->music.currentSong;
-    Timer timer = {0};
     
     while (!WindowShouldClose()){
         m_handleUserInput(&ctx, cmd, sizeof(cmd) / sizeof(cmd[0]));
 
+        pthread_mutex_lock(&ctx.timer_mutex);
         updateTimer(
-            &timer,
-            GetMusicTimePlayed(*currentMusic),
-            GetMusicTimeLength(*currentMusic)
+            &ctx.status->player.timer,
+            getTimePlayed(ctx.status->player.timer),
+            getTimeLength(*currentMusic)
         );
+        pthread_mutex_unlock(&ctx.timer_mutex);
 
         BeginDrawing();
             ClearBackground(BLACK);
@@ -390,8 +526,10 @@ int main(void)
                 10, 10, 20, RAYWHITE
             );
 
+            DrawRectangle(SCREEN_WIDTH-GAP*2, SCREEN_HEIGHT-GAP*2, GAP, GAP, IsMusicReady(*ctx.status->music.currentSong) ? GREEN : RED);
+
             drawTimer(
-                &timer,
+                &ctx.status->player.timer,
                 currentMusic,
                 (Rectangle){20, 230, 400, 20}
             );
@@ -405,7 +543,7 @@ int main(void)
 
         EndDrawing();
 
-        buttons[0].label = ctx.status->player.isPaused ? "Play" : "Pause";
+        buttons[0].label = ctx.status->player.timer.isPaused ? "Play" : "Pause";
     }
 
     m_rayClose(&ctx);
