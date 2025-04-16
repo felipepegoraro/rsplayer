@@ -65,3 +65,13 @@ void m_DrawToolTip(Tooltip *t, float deltaTime){
         textColor
     );
 }
+
+void m_drawTrackCounter(size_t current, size_t total, Vector2 pos){
+    char trackInfo[16];
+    snprintf(trackInfo, sizeof(trackInfo), "%zu/%zu", current+1, total);
+
+    int textWidth = MeasureText(trackInfo, FONT_SIZE);
+    int textX = pos.x - textWidth - 5;
+    DrawText(trackInfo, textX, pos.y, FONT_SIZE, WHITE);
+}
+

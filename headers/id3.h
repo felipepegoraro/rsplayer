@@ -15,13 +15,12 @@
 // } Tags;
 
 typedef struct ID3V2_Tags {
-    uint8_t size;
     uint16_t version;
-
+    uint8_t size;
+    char year[5];               // TYER (Ano)
     char title[T_ID3V2_MAX];    // TIT2 (Título)
     char artist[T_ID3V2_MAX];   // TPE1 (Artista)
     char album[T_ID3V2_MAX];    // TALB (Álbum)
-    char year[5];               // TYER (Ano)
     char genre[T_ID3V2_MAX];    // TCON (Gênero)
 } ID3V2_Tags;
 

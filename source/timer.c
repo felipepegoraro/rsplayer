@@ -4,8 +4,8 @@
 void updateTimer(Timer *t, float played, float total){
     if (!t) return;
 
-    t->secPlayed = (int)played;
-    t->secTotal = (int)total;;
+    t->secPlayed = (uint16_t)played;
+    t->secTotal = (uint16_t) total;;
 }
 
 void resetTimer(Timer *t) {
@@ -20,6 +20,7 @@ void resetTimer(Timer *t) {
         .secTotal = 0,
         .isPaused = 0
     };
+    printf("==========!\n");
 }
 
 void formatTimerString(Timer *t, char *buffer, size_t bufferSize) {
@@ -40,15 +41,15 @@ void formatTimerString(Timer *t, char *buffer, size_t bufferSize) {
 
 
 float getTimerProgress(const Timer *t){
-    if (!t) return 0.0f;
+    if (!t || t->secTotal <= 0.0f) return 0.0f;
 
-    float pl = t->secPlayed; 
-    float tt = t->secTotal;
+    float played = getTimePlayed(*t);  // tempo real agora agora
+    float total  = (float)t->secTotal;
 
-    if (pl <= 0.0f || tt <= 0.0f || isnan(tt) || isnan(pl) || isinf(tt) || isinf(pl))
+    if (played <= 0.0f || isnan(total) || isinf(total) || isnan(played) || isinf(played))
         return 0.0f;
 
-    return (pl / tt * 100.0f);
+    return (played / total) * 100.0f;
 }
 
 #include <stdio.h> // para printf
@@ -64,43 +65,33 @@ void updateTimerFromClick(Timer *timer, Music *music, Rectangle bar) {
             float totalSeconds = getTimeLength(*music);
             float newTime = porc * totalSeconds;
 
-            // DEBUG OUTPUT
-            printf("Mouse position: x=%.2f, y=%.2f\n", mousePos.x, mousePos.y);
-            printf("Bar: x=%.2f, width=%.2f\n", bar.x, bar.width);
-            printf("Clicked percent on bar: %.2f%%\n", porc * 100.0f);
-            printf("Total seconds of music: %.2f\n", totalSeconds);
-            printf("New time (to seek): %.2f\n", newTime);
-
             if (newTime < totalSeconds) {
                 PauseMusicStream(*music);
                 SeekMusicStream(*music, newTime);
                 ResumeMusicStream(*music);
+
                 updateTimer(timer, newTime, totalSeconds);
 
-                printf("Timer updated:\n");
-                printf("  secPlayed: %d\n", timer->secPlayed);
-                printf("  secTotal:  %d\n", timer->secTotal);
-                printf("  startTime: %.2f\n", timer->startTime);
-                printf("  pauseTime: %.2f\n", timer->pauseTime);
-                printf("  lastPause: %.2f\n", timer->lastPause);
-                printf("  seekOffset: %.2f\n", timer->seekOffset);
-                printf("  isPaused: %s\n", timer->isPaused ? "true" : "false");
-            }
-
-            timer->seekOffset = newTime;
-            if (timer->isPaused){
-                timer->lastPause = GetTime();
-                timer->pauseTime = 0.0;
+                timer->seekOffset = newTime;
+                double now = GetTime();
+                timer->startTime = now;
+                timer->lastPause = now;
+                timer->pauseTime = 0.0f;
             }
         }
     }
 }
 
+// todo: mover para ui.c
 void drawTimer(Timer *timer, Music *music, Rectangle rect){
     if (!timer || !music) {
         printf("okokokok\n");
         return;
     }
+
+    float played = getTimePlayed(*timer);
+    float total = getTimeLength(*music);
+    updateTimer(timer, played, total);
 
     char percBuffer[5];
     char timerBuffer[32];
@@ -130,7 +121,7 @@ void pauseTimer(Timer *timer){
     if (!timer) return;
 
     timer->lastPause = GetTime();
-    timer->isPaused = 1;
+    timer->isPaused = true;
 }
 
 void resumeTimer(Timer *timer){
@@ -141,14 +132,15 @@ void resumeTimer(Timer *timer){
 }
 
 float getTimeLength(const Music m){
-    return (float)m.frameCount / (float)(m.stream.sampleRate * m.stream.channels);
+    // return (float)m.frameCount / (float)(m.stream.sampleRate * m.stream.channels);
+    return (float)m.frameCount / (float)(m.stream.sampleRate);
 }
 
 float getTimePlayed(const Timer t){
     double now = GetTime();
     double base = t.seekOffset;
 
-    return (int)((t.isPaused)
+    return (float)((t.isPaused)
         ? base + (t.lastPause - t.startTime)
         : base + (now - t.startTime - t.pauseTime));
 }

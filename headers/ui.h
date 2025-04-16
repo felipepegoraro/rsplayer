@@ -51,4 +51,9 @@ bool m_CallbackButtonClicked(Button button);
 
 void m_DrawToolTip(Tooltip *t, float deltaTime);
 
+
+// TRACK COUNTER ----------------------------------------------
+#include <stdio.h>
+void m_drawTrackCounter(size_t current, size_t total, Vector2 pos);
+
 #endif

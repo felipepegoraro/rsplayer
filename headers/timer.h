@@ -2,11 +2,12 @@
 #define TIMER_H
 
 #include <stdio.h>
+#include <stdint.h>
 #include "raylib.h"
 
 typedef struct {
-    int secPlayed; // tocaods segundos
-    int secTotal;  // min_played:sec_played / min_total:sec_total
+    uint16_t secPlayed; // tocaods segundos
+    uint16_t secTotal;  // min_played:sec_played / min_total:sec_total
 
     double startTime;
     double pauseTime;

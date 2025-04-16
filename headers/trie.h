@@ -11,9 +11,9 @@
 #define MAX_SUGGESTIONS 16
 
 typedef struct TrieNode {
-    char value;
-    int is_terminal;
     struct TrieNode *children[ALPHABET_SIZE];
+    int is_terminal;
+    char value;
 } TrieNode;
 
 typedef struct {

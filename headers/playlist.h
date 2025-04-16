@@ -6,8 +6,8 @@
 
 typedef struct playlist {
     Queue *queue;
-    char name[64];
     size_t current_index;
+    char name[44];
     int is_real_q; // 1: fila | 0: playlist
 } Playlist;
 
