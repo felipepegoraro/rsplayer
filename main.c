@@ -6,7 +6,6 @@
 #include <limits.h>
 #include <unistd.h>
 #include <pthread.h>
-#include <assert.h>
 #include <math.h>
 #include "./headers/arena.h"
 #include "./headers/id3.h"
@@ -42,7 +41,6 @@ typedef struct AppStatus {
 typedef struct AppContext {
     AppStatus *status;
     arena_t arenaSongs;
-    pthread_mutex_t timer_mutex;
     // HashTable *songs
 } AppContext;
 
@@ -90,20 +88,14 @@ void m_cmdPlayPause(void *context){
     if (!ctx || !ctx->status) return;
 
     Music *music =  ctx->status->music.currentSong;
-    Timer *timer = &ctx->status->player.timer;
 
-    pthread_mutex_lock(&ctx->timer_mutex);
-
-    if (timer->isPaused){
+    if (ctx->status->player.timer.isPaused){
         ResumeMusicStream(*music);
-        resumeTimer(timer);
-        timer->isPaused=0;
+        resumeTimer(&ctx->status->player.timer);
     } else {
         PauseMusicStream(*music);
-        pauseTimer(timer);
-        timer->isPaused=1;
+        pauseTimer(&ctx->status->player.timer);
     }
-    pthread_mutex_unlock(&ctx->timer_mutex);
 }
 
 void m_cmdSeekForward(void *context) {
@@ -136,9 +128,7 @@ void m_cmdSeekForward(void *context) {
         tooltip->visible = true;
         tooltip->color = TIP_COLOR;
 
-        pthread_mutex_lock(&ctx->timer_mutex);
         timer->seekOffset += 10;
-        pthread_mutex_unlock(&ctx->timer_mutex);
     }
 }
 
@@ -162,10 +152,7 @@ void m_cmdSeekBackward(void *context) {
             return;
         }
 
-        pthread_mutex_lock(&ctx->timer_mutex);
         timer->seekOffset -= 10;
-        pthread_mutex_unlock(&ctx->timer_mutex);
-
         if (back <= 0.0f) {
             back = 0.0f;
             resetTimer(timer);
@@ -185,21 +172,27 @@ static FILE *m_openSongFile(const char *songPath) {
     return f;
 }
 
-static void m_stopAndUnloadPreviousSong(AppContext *ctx) {
+void m_stopAndUnloadPreviousSong(AppContext *ctx) {
     if (!ctx || !ctx->status) return;
-    pthread_mutex_lock(&ctx->timer_mutex);
-    Music *m = ctx->status->music.currentSong;
 
-    if (m){
-        StopMusicStream(*m);
-        while (!IsMusicReady(*m));
-        UnloadMusicStream(*m);
-    }
-    pthread_mutex_unlock(&ctx->timer_mutex);
+    Music *m = ctx->status->music.currentSong;
+    if (!m || !m->ctxData) return;
+
+    StopMusicStream(*m);
+    UnloadMusicStream(*m);
+
+    memset(m, 0, sizeof(Music));
 }
 
 static Music *m_loadNewSong(AppContext *ctx, const char *songPath, FILE *f) {
+    if (access(songPath, F_OK) == -1) {
+        printf("Erro: o arquivo %s não existe\n", songPath);
+        fclose(f);
+        return NULL;
+    }
+
     Music tempMusic = LoadMusicStream(songPath);
+
     if (!tempMusic.ctxData) {
         printf("Erro ao carregar musica: %s\n", songPath);
         fclose(f);
@@ -207,8 +200,8 @@ static Music *m_loadNewSong(AppContext *ctx, const char *songPath, FILE *f) {
     }
 
     Music *musicPtr = arena_alloc(ctx->arenaSongs.arena, sizeof(Music));
+
     if (!musicPtr) {
-        printf("Erro de alocação\n");
         UnloadMusicStream(tempMusic);
         fclose(f);
         return NULL;
@@ -226,7 +219,6 @@ static bool m_waitUntilMusicReady(Music *musicPtr) {
     }
 
     if (!IsMusicReady(*musicPtr)) {
-        printf("Falha ao preparar música\n");
         UnloadMusicStream(*musicPtr);
         return false;
     }
@@ -262,25 +254,35 @@ static void m_loadAndPrintTags(AppContext *ctx, FILE *f, const char *songPath) {
     }
 }
 
-
 void m_playSong(AppContext *ctx, const char *songPath) {
-    if (!ctx || !songPath) return;
+    if (!ctx || !songPath) {
+        printf("Erro: Contexto ou caminho da música inválido.\n");
+        return;
+    }
 
     FILE *f = m_openSongFile(songPath);
-    if (!f) return;
+    if (!f) {
+        printf("Erro: Não foi possível abrir o arquivo de música.\n");
+        return;
+    }
 
     m_stopAndUnloadPreviousSong(ctx);
 
-    Music *musicPtr = m_loadNewSong(ctx, songPath, f);
-    if (!musicPtr) return;
+    Music *musicPtr =m_loadNewSong(ctx, songPath, f);
+
+    if (!musicPtr || !musicPtr->ctxData) {
+        printf("Erro: Não foi possível carregar a nova música.\n");
+        fclose(f);
+        return;
+    }
 
     if (!m_waitUntilMusicReady(musicPtr)) {
+        printf("Erro: A música não ficou pronta.\n");
         fclose(f);
         return;
     }
 
     ctx->status->music.currentSong = musicPtr;
-
     m_prepareAndPlayMusic(ctx, musicPtr);
     m_loadAndPrintTags(ctx, f, songPath);
 }
@@ -367,31 +369,26 @@ void *m_musicThreadFn(void *context) {
     bool isPlaying = false;
 
     while (!WindowShouldClose()) {
-        pthread_mutex_lock(&ctx->timer_mutex);
 
-        // acho melhor do que ficar criando uma variável em todo loop
-        music     = ctx->status->music.currentSong;
+        music = ctx->status->music.currentSong;
         isPlaying = music && !ctx->status->player.timer.isPaused;
 
-        if (isPlaying) {
-            if (IsMusicReady(*music)) UpdateMusicStream(*music);
+        if (isPlaying && IsMusicReady(*music)) {
+            UpdateMusicStream(*music);
 
             float played = getTimePlayed(ctx->status->player.timer);
             float total = getTimeLength(*music);
 
-            // mais legível...
-            bool playedValid = isnan(played) == 0 && isfinite(played);
-            bool totalValid  = isnan(total) == 0 && isfinite(total);
-
-            if (playedValid && totalValid) {
+            if (!isnan(played) && !isnan(total) && isfinite(played) && isfinite(total)) {
                 if (played > 0.1f && (total - played) < 0.1f) {
                     m_cmdPlayNextSong(ctx);
-                    printf("NEXT FUCKING SONG!\n");
+                    printf("next fucking song!\n");
+                    continue;
                 }
-            }         
+            }
         }
 
-        pthread_mutex_unlock(&ctx->timer_mutex);
+
         usleep(MUSIC_THREAD_SLEEP_TIME);
     }
 
@@ -408,10 +405,14 @@ void m_handleUserInput(AppContext *ctx, Commands *cmd, int cmd_count) {
 }
 
 Button buttons[] = {
-    { .bounds = (Rectangle){160, 50, 100, 40}, .color = RED, .label = "Pause", .onClick = m_cmdPlayPause },
-    { .bounds = (Rectangle){270, 50, 100, 40}, .color = DARKBLUE, .label = "Next", .onClick = m_cmdPlayNextSong },
-    { .bounds = (Rectangle){50, 50, 100, 40}, .color = DARKBLUE, .label = "Prev", .onClick = m_cmdPlayPrevSong }
+    { .bounds = (Rectangle){SCREEN_WIDTH/2.0-50     , SCREEN_HEIGHT-100, 100, 40}, .color = RED,      .label = "Pause", .onClick = m_cmdPlayPause    },
+    { .bounds = (Rectangle){SCREEN_WIDTH/2.0+50+GAP , SCREEN_HEIGHT-100, 100, 40}, .color = DARKBLUE, .label = "Next",  .onClick = m_cmdPlayNextSong },
+    { .bounds = (Rectangle){SCREEN_WIDTH/2.0-150-GAP, SCREEN_HEIGHT-100, 100, 40}, .color = DARKBLUE, .label = "Prev",  .onClick = m_cmdPlayPrevSong }
 };
+
+void drawMenuDisplay(){
+    DrawRectangle(GAP*5+50, 100, SCREEN_WIDTH*0.75, SCREEN_WIDTH*0.47, GRAY);
+}
 
 int main(void)
 {
@@ -452,7 +453,6 @@ int main(void)
     AppContext ctx = {
         .arenaSongs = arena,
         .status = &status,
-        .timer_mutex = PTHREAD_MUTEX_INITIALIZER
     };
 
     // TODO: fuzzy finder para selecionar mppusica (Levenshtein Distance ou Trie)
@@ -468,16 +468,19 @@ int main(void)
         BeginDrawing();
             ClearBackground(BLACK);
 
+            drawMenuDisplay();
+            DrawText(PLAYER_NAME, GAP*2, GAP*2, FONT_SIZE*1.5, RAYWHITE);
+            DrawRectangle(SCREEN_WIDTH*0.75-50-MeasureText(PLAYER_NAME,FONT_SIZE*1.5), GAP*2.5-2, SCREEN_WIDTH/2.5, 20, RAYWHITE);
             DrawText(
                 strlen(ctx.status->music.tags.title) > 0 
-                ? ctx.status->music.tags.title
-                : arena_get_by_index(&ctx.arenaSongs, ctx.status->player.indexSong),
-                10, 10, FONT_SIZE, RAYWHITE
+                    ? ctx.status->music.tags.title
+                    : arena_get_by_index(&ctx.arenaSongs, ctx.status->player.indexSong),
+                GAP*2,
+                FONT_SIZE*2.4+GAP, FONT_SIZE, RAYWHITE
             );
-
             DrawRectangle(
-                SCREEN_WIDTH-GAP*2,
-                SCREEN_HEIGHT-GAP*2,
+                SCREEN_WIDTH-25,
+                GAP*1.5f,
                 GAP, GAP,
                 IsMusicReady(*ctx.status->music.currentSong) ? GREEN : RED
             );
@@ -486,15 +489,15 @@ int main(void)
                 ctx.status->player.indexSong,
                 ctx.arenaSongs.total,
                 (Vector2){
-                    .x = SCREEN_WIDTH - GAP * 3,
-                    .y = SCREEN_HEIGHT - FONT_SIZE/1.5f - GAP
+                    .x = SCREEN_WIDTH - GAP * 2.8,
+                    .y = FONT_SIZE/2.0
                 }
             );
 
             drawTimer(
                 &ctx.status->player.timer,
                 ctx.status->music.currentSong,
-                (Rectangle){20, SCREEN_HEIGHT-4*GAP, 400, 20}
+                (Rectangle){(int)(SCREEN_WIDTH/2)-200, SCREEN_HEIGHT-4*GAP, 400, 20}
             );
 
             for (int i=0; i<3; i++){

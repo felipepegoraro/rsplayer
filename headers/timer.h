@@ -1,6 +1,8 @@
 #ifndef TIMER_H
 #define TIMER_H
 
+#include "ui.h"
+
 #include <stdio.h>
 #include <stdint.h>
 #include "raylib.h"
@@ -31,5 +33,7 @@ void resumeTimer(Timer *timer);
 float getTimeLength(const Music m);
 float getTimePlayed(const Timer t);
 float getTimerProgress(const Timer *t);
+
+void printTimer(const Timer *t);
 
 #endif

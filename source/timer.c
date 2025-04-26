@@ -20,14 +20,10 @@ void resetTimer(Timer *t) {
         .secTotal = 0,
         .isPaused = 0
     };
-    printf("==========!\n");
 }
 
 void formatTimerString(Timer *t, char *buffer, size_t bufferSize) {
-    if (!t) {
-        printf("???????\n");
-        return;
-    }
+    if (!t) return;
 
     snprintf(
         buffer, bufferSize,
@@ -42,8 +38,9 @@ void formatTimerString(Timer *t, char *buffer, size_t bufferSize) {
 
 float getTimerProgress(const Timer *t){
     if (!t || t->secTotal <= 0.0f) return 0.0f;
+    if (t->isPaused) return ((float)t->secPlayed / (float)t->secTotal) * 100.0f;
 
-    float played = getTimePlayed(*t);  // tempo real agora agora
+    float played = getTimePlayed(*t);
     float total  = (float)t->secTotal;
 
     if (played <= 0.0f || isnan(total) || isinf(total) || isnan(played) || isinf(played))
@@ -52,56 +49,68 @@ float getTimerProgress(const Timer *t){
     return (played / total) * 100.0f;
 }
 
-#include <stdio.h> // para printf
+// #include <stdio.h> // para printf
+
+static inline bool isMouseClickInBar(Rectangle bar) {
+    return IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && 
+           CheckCollisionPointRec(GetMousePosition(), bar);
+}
+
+static inline float getNewTimeFromBarClick(Rectangle bar, Music music) {
+    Vector2 mousePos = GetMousePosition();
+    float percentage = (mousePos.x - bar.x) / bar.width;
+
+    return percentage * getTimeLength(music);
+}
 
 void updateTimerFromClick(Timer *timer, Music *music, Rectangle bar) {
     if (!timer || !music) return;
+    if (!isMouseClickInBar(bar)) return;
 
-    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-        Vector2 mousePos = GetMousePosition();
+    float totalSeconds = getTimeLength(*music);
+    float newTime = getNewTimeFromBarClick(bar, *music);
 
-        if (CheckCollisionPointRec(mousePos, bar)) {
-            float porc = (mousePos.x - bar.x) / bar.width;
-            float totalSeconds = getTimeLength(*music);
-            float newTime = porc * totalSeconds;
+    if (newTime >= totalSeconds) return;
 
-            if (newTime < totalSeconds) {
-                PauseMusicStream(*music);
-                SeekMusicStream(*music, newTime);
-                ResumeMusicStream(*music);
+    PauseMusicStream(*music);
+    SeekMusicStream(*music, newTime);
+    ResumeMusicStream(*music);
 
-                updateTimer(timer, newTime, totalSeconds);
+    updateTimer(timer, newTime, totalSeconds);
 
-                timer->seekOffset = newTime;
-                double now = GetTime();
-                timer->startTime = now;
-                timer->lastPause = now;
-                timer->pauseTime = 0.0f;
-            }
-        }
-    }
+    double now = GetTime();
+    timer->seekOffset = newTime;
+    timer->startTime = now;
+    timer->lastPause = now;
+    timer->pauseTime = 0.0f;
 }
 
 // todo: mover para ui.c
 void drawTimer(Timer *timer, Music *music, Rectangle rect){
-    if (!timer || !music) {
-        printf("okokokok\n");
-        return;
-    }
+    if (!timer || !music) return;
 
-    float played = getTimePlayed(*timer);
-    float total = getTimeLength(*music);
-    updateTimer(timer, played, total);
+    updateTimerFromClick(timer, music, rect);
+
+    if (!timer->isPaused) {
+        float played = getTimePlayed(*timer);
+        float total = getTimeLength(*music);
+        updateTimer(timer, played, total);
+    }
 
     char percBuffer[5];
     char timerBuffer[32];
 
-    float musicProgress = getTimerProgress(timer);
+    // float musicProgress = getTimerProgress(timer);
+    float musicProgress = timer->isPaused 
+        ? ((float)timer->secPlayed / (float)timer->secTotal) * 100.0f
+        : getTimerProgress(timer);
+
+
     snprintf(percBuffer, sizeof(percBuffer), "%.0f%%", musicProgress);
     formatTimerString(timer, timerBuffer, sizeof(timerBuffer));
 
-    DrawText(timerBuffer, 20, rect.y-40, 20, WHITE);
-    DrawText(percBuffer, 430, rect.y, 20, WHITE);
+    DrawText(timerBuffer, rect.x-MeasureText(timerBuffer, FONT_SIZE)-GAP, rect.y/*-(GAP*3)*/, FONT_SIZE, WHITE);
+    DrawText(percBuffer, rect.x+rect.width+GAP, rect.y, FONT_SIZE, WHITE);
 
     DrawRectangle(rect.x, rect.y, rect.width, rect.height, GRAY);
 
@@ -112,8 +121,6 @@ void drawTimer(Timer *timer, Music *music, Rectangle rect){
         rect.height,
         GREEN
     );
-
-    updateTimerFromClick(timer, music, rect);
 }
 
 
@@ -132,12 +139,11 @@ void resumeTimer(Timer *timer){
 }
 
 float getTimeLength(const Music m){
-    // return (float)m.frameCount / (float)(m.stream.sampleRate * m.stream.channels);
     return (float)m.frameCount / (float)(m.stream.sampleRate);
 }
 
 float getTimePlayed(const Timer t){
-    double now = GetTime();
+    double now  = GetTime();
     double base = t.seekOffset;
 
     return (float)((t.isPaused)
