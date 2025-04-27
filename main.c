@@ -410,9 +410,129 @@ Button buttons[] = {
     { .bounds = (Rectangle){SCREEN_WIDTH/2.0-150-GAP, SCREEN_HEIGHT-100, 100, 40}, .color = DARKBLUE, .label = "Prev",  .onClick = m_cmdPlayPrevSong }
 };
 
-void drawMenuDisplay(){
-    DrawRectangle(GAP*5+50, 100, SCREEN_WIDTH*0.75, SCREEN_WIDTH*0.47, GRAY);
+
+
+
+
+
+
+
+
+
+
+
+int page = 0;
+#include <stdio.h>
+
+
+
+void drawMusicCard(Vector2 pos, const char *musicName, size_t index, int current) {
+    char indexStr[4];
+    snprintf(indexStr, sizeof(indexStr), "%zu", index);
+
+    const size_t card_width = 570;
+    const size_t card_height = 55;
+
+    char displayName[128];
+
+    m_truncateTextWithEllipsis(musicName, displayName, card_width - 125, FONT_SIZE);
+
+    Rectangle card = {pos.x + GAP, pos.y, card_width, card_height};
+
+    DrawRectangleRounded(card, 0.4, 24, current ? GREEN : LIGHTGRAY);
+
+    DrawText(indexStr, pos.x + 3 * GAP, pos.y + 2 * GAP, FONT_SIZE, BLACK);
+    DrawText(displayName, pos.x + 4 * GAP + 30, pos.y + 2 * GAP, FONT_SIZE, BLACK);
 }
+
+void handleKeyboardPageMusicCardNavigation(int maxMusicsPerPage, int nOfPages) {
+    if (IsKeyPressed(KEY_A)) {
+        page -= maxMusicsPerPage;
+        if (page < 0) page = 0;
+    }
+
+    if (IsKeyPressed(KEY_D)) {
+        page += maxMusicsPerPage;
+        if (page >= nOfPages * maxMusicsPerPage) page = (nOfPages - 1) * maxMusicsPerPage;
+    }
+}
+
+void handleMouseScrollPageMusicCardNavigation(int maxMusicsPerPage, int nOfPages) {
+    float wheel = GetMouseWheelMove();
+    float smooth = maxMusicsPerPage * 0.4f;
+
+    if (wheel > 0) {
+        page -= (int)smooth;
+        if (page < 0) page = 0;
+    }
+
+    if (wheel < 0) {
+        page += (int)smooth;
+        if (page >= nOfPages * maxMusicsPerPage) page = (nOfPages - 1) * maxMusicsPerPage;
+    }
+}
+
+
+void drawMenuDisplay(AppContext *ctx) {
+    const int maxMusicsPerPage = 5;
+    const int startX = GAP * 6 + 45;
+    const int startY = 110;
+    const int cardSpacing = 70;
+    const int screenHeightLimit = SCREEN_WIDTH * 0.47 + 100;
+    const int nOfPages = (ctx->arenaSongs.total + maxMusicsPerPage - 1) / maxMusicsPerPage;
+
+    // DrawRectangle(GAP * 5 + 50, 100, SCREEN_WIDTH * 0.75, SCREEN_WIDTH * 0.47, GRAY);
+
+    handleKeyboardPageMusicCardNavigation(maxMusicsPerPage, nOfPages);
+    handleMouseScrollPageMusicCardNavigation(maxMusicsPerPage, nOfPages);
+
+    int x = startX;
+    int y = startY;
+    int musicDrawn = 0;
+
+    Arena *currentArena = arena_head(&ctx->arenaSongs);
+
+    for (size_t i = page; i < ctx->arenaSongs.total && musicDrawn < maxMusicsPerPage; i++) {
+        if (currentArena == NULL) break;
+        if (y + cardSpacing > screenHeightLimit) break;
+
+        drawMusicCard(
+            (Vector2){x, y + 5},
+            currentArena->memory,
+            i,
+            (size_t)ctx->status->player.indexSong == i
+        );
+        
+        y += cardSpacing;
+        musicDrawn++;
+        currentArena = arena_next(currentArena);
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 int main(void)
 {
@@ -455,6 +575,10 @@ int main(void)
         .status = &status,
     };
 
+
+    // Playlist playlist = playlist_init("Playlist", false, &ctx.status->music);
+    // playlist_free(&playlist);
+
     // TODO: fuzzy finder para selecionar mppusica (Levenshtein Distance ou Trie)
     const char *song = arena_get_by_index(&ctx.arenaSongs, 0);
     m_playSong(&ctx, song);
@@ -468,7 +592,7 @@ int main(void)
         BeginDrawing();
             ClearBackground(BLACK);
 
-            drawMenuDisplay();
+            drawMenuDisplay(&ctx);
             DrawText(PLAYER_NAME, GAP*2, GAP*2, FONT_SIZE*1.5, RAYWHITE);
             DrawRectangle(SCREEN_WIDTH*0.75-50-MeasureText(PLAYER_NAME,FONT_SIZE*1.5), GAP*2.5-2, SCREEN_WIDTH/2.5, 20, RAYWHITE);
             DrawText(

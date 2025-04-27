@@ -75,3 +75,24 @@ void m_drawTrackCounter(size_t current, size_t total, Vector2 pos){
     DrawText(trackInfo, textX, pos.y, FONT_SIZE, WHITE);
 }
 
+
+void m_truncateTextWithEllipsis(
+    const char *input,
+    char *output,
+    size_t maxWidth,
+    int fontSize
+) {
+    size_t estimatedCharWidth = fontSize / 2; 
+    size_t maxChars = maxWidth / estimatedCharWidth;
+    size_t inputLen = strlen(input);
+
+    if (inputLen <= maxChars) strcpy(output, input);
+    else {
+        if (maxChars > 3) maxChars -= 3;
+        else maxChars = 0;
+
+        strncpy(output, input, maxChars);
+        output[maxChars] = '\0';
+        strcat(output, "...");
+    }
+}

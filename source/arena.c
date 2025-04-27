@@ -91,3 +91,12 @@ const char *arena_get_by_index(arena_t *arena, size_t index) {
     }
     return arena->arena->memory + offset;
 }
+
+Arena *arena_head(arena_t *arena) {
+    return arena->arena;
+}
+
+Arena *arena_next(Arena *current) {
+    return current ? current->next : NULL;
+}
+

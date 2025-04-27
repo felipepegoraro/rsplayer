@@ -22,4 +22,7 @@ void *arena_alloc(Arena *a, size_t size);
 void arena_free(Arena *a);
 const char *arena_get_by_index(arena_t *arena, size_t index);
 
+Arena *arena_head(arena_t *arena);
+Arena *arena_next(Arena *current);
+
 #endif

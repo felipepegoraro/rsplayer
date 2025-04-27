@@ -56,4 +56,9 @@ void m_DrawToolTip(Tooltip *t, float deltaTime);
 #include <stdio.h>
 void m_drawTrackCounter(size_t current, size_t total, Vector2 pos);
 
+
+#include <string.h>
+// MUSIC CARD -------------------------------------------------
+void m_truncateTextWithEllipsis(const char *, char *, size_t, int);
+
 #endif
