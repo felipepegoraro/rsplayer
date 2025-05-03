@@ -57,29 +57,36 @@ void m_cmdSeekForward(void *context) {
     Timer *timer = &ctx->status->player.timer;
     Music *music = ctx->status->music.currentSong;
 
-    if (music) {
-        float current = getTimePlayed(*timer);
-        float total = getTimeLength(*music);
+    if (!music) return;
+    if (IsMusicStreamPlaying(*music)) PauseMusicStream(*music);
 
-        if (!((!isnan(current) && current >= 0.0f) || 
-              (!isnan(total) && total >= 0.0f))
-        ){
-            tooltip->message = "Erro ao carregar.";
-            tooltip->visible = true;
-            tooltip->color = ERROR_COLOR;
-            return;
-        }
+    float current = getTimePlayed(*timer);
+    float total = getTimeLength(*music);
 
-        float next = current + 10.0f;
-        if (next > total) next = total;
-        SeekMusicStream(*music, next);
-
-        tooltip->message = "+10s";
+    if (!((!isnan(current) && current >= 0.0f) || 
+          (!isnan(total) && total >= 0.0f))
+    ){
+        snprintf(tooltip->message, sizeof(tooltip->message), "Erro ao carregar.");
         tooltip->visible = true;
-        tooltip->color = TIP_COLOR;
-
-        timer->seekOffset += 10;
+        tooltip->color = ERROR_COLOR;
+        return;
     }
+
+    float next = current + 10.0f;
+    if (next > total) next = total;
+    SeekMusicStream(*music, next);
+
+    int nt = ctx->keyLog.localRepeater;
+
+    if (nt == 0) snprintf(tooltip->message, sizeof(tooltip->message), "+10s");
+    else snprintf(tooltip->message, sizeof(tooltip->message), "%ds", nt * 10);
+
+    tooltip->visible = true;
+    tooltip->color = TIP_COLOR;
+
+    timer->seekOffset += 10;
+
+    ResumeMusicStream(*music);
 }
 
 
@@ -93,28 +100,36 @@ void m_cmdSeekBackward(void *context) {
     Timer *timer = &ctx->status->player.timer;
     Music *music = ctx->status->music.currentSong;
 
-    if (music) {
-        float back = getTimePlayed(*timer) - 10.0f;
 
-        if (isnan(back)){
-            tooltip->message = "Erro ao carregar.";
-            tooltip->visible = true;
-            tooltip->color = ERROR_COLOR;
-            return;
-        }
+    if (!music) return;
+    if (IsMusicStreamPlaying(*music)) PauseMusicStream(*music);
 
-        timer->seekOffset -= 10;
-        if (back <= 0.0f) {
-            back = 0.0f;
-            resetTimer(timer);
-        }
+    float back = getTimePlayed(*timer) - 10.0f;
 
-        SeekMusicStream(*music, back);
-
-        tooltip->message = "-10s";
+    if (isnan(back)){
+        snprintf(tooltip->message, sizeof(tooltip->message), "Erro ao carregar.");
         tooltip->visible = true;
-        tooltip->color = TIP_COLOR;
+        tooltip->color = ERROR_COLOR;
+        return;
     }
+
+    timer->seekOffset -= 10;
+    if (back <= 0.0f) {
+        back = 0.0f;
+        resetTimer(timer);
+    }
+
+    SeekMusicStream(*music, back);
+
+    int nt = ctx->keyLog.localRepeater;
+
+    if (nt == 0) snprintf(tooltip->message, sizeof(tooltip->message), "-10s");
+    else snprintf(tooltip->message, sizeof(tooltip->message), "%ds", nt * -10);
+
+    tooltip->visible = true;
+    tooltip->color = TIP_COLOR;
+
+    ResumeMusicStream(*music);
 }
 
 
@@ -137,7 +152,7 @@ void m_cmdMuteVolume(void *context){
         p->isMuted = 1;
     }
 
-    t->message = p->isMuted ? "Volume mutado." : "Volume desmutado.";
+    snprintf(t->message, sizeof(t->message), "%s", p->isMuted ? "Volume mutado." : "Volume desmutado.");
     t->color   = TIP_COLOR;
     t->visible = true;
 }

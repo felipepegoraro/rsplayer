@@ -13,6 +13,14 @@
 // 6. mostrar as tags id3 no card music em vez no path
 
 
+// typedef enum {
+    // LOOP_ALL,
+    // LOOP_ONE,
+    // SHUFFLE,
+    // STOP_AFTER_END
+// } PlaybackMode;
+
+
 #include <pthread.h>
 #include "./headers/ui.h"
 #include "./headers/keymap.h"
@@ -53,6 +61,7 @@ Button buttons[] = {
 #define CARD_HEIGHT 55
 #define MAX_MUSICS_PER_PAGE 5
 #define MUSIC_CARD_START_Y 110
+#define MUSIC_CARD_START_X ((GAP) * 6 + 45)
 #define MAX_DISPLAY_NAME_SIZE 128
 #define CARD_SPACING 70
 
@@ -76,7 +85,15 @@ void drawMusicCard(Vector2 pos, const char *musicName, size_t index, int current
 int handleClickOnMusicCard(AppContext *ctx, Vector2 mousePos) {
     if (!ctx) return -1;
 
-    if (mousePos.y < MUSIC_CARD_START_Y || mousePos.y >= MUSIC_CARD_START_Y + CARD_SPACING * MAX_MUSICS_PER_PAGE) {
+    const float 
+        leftX  = MUSIC_CARD_START_X+GAP,
+        rightX = MUSIC_CARD_START_X + CARD_WIDTH,
+        leftY  = MUSIC_CARD_START_Y,
+        rightY = MUSIC_CARD_START_Y + CARD_SPACING * MAX_MUSICS_PER_PAGE;
+
+    if (mousePos.y < leftY || mousePos.y >= rightY ||
+        mousePos.x < leftX || mousePos.x >= rightX
+    ){
         return -1;
     }
 
@@ -86,41 +103,52 @@ int handleClickOnMusicCard(AppContext *ctx, Vector2 mousePos) {
     return musicIndex + musicCardPage; 
 }
 
-void handleKeyboardPageMusicCardNavigation(int nOfPages) {
+int handleKeyboardPageMusicCardNavigation(int nOfPages) {
+    int clicked = 0;
     if (IsKeyPressed(KEY_PREV_CARD_PAGE)) {
         musicCardPage -= MAX_MUSICS_PER_PAGE;
         if (musicCardPage < 0) musicCardPage = 0;
+        clicked = 1;
     }
 
     if (IsKeyPressed(KEY_NEXT_CARD_PAGE)) {
         musicCardPage += MAX_MUSICS_PER_PAGE;
-        if (musicCardPage >= nOfPages * MAX_MUSICS_PER_PAGE) musicCardPage = (nOfPages - 1) * MAX_MUSICS_PER_PAGE;
+        if (musicCardPage >= nOfPages * MAX_MUSICS_PER_PAGE) {
+            musicCardPage = (nOfPages - 1) * MAX_MUSICS_PER_PAGE;
+        }
+        clicked = 1;
     }
+
+    return clicked;
 }
 
-void handleMouseScrollPageMusicCardNavigation(int nOfPages) {
+int handleMouseScrollPageMusicCardNavigation(int nOfPages) {
     float wheel = GetMouseWheelMove();
     float smooth = MAX_MUSICS_PER_PAGE * 0.4f;
+    int clicked = 0;
 
     if (wheel > 0) {
         musicCardPage -= (int)smooth;
         if (musicCardPage < 0) musicCardPage = 0;
+        clicked = 1;
     }
 
     if (wheel < 0) {
         musicCardPage += (int)smooth;
-        if (musicCardPage >= nOfPages * MAX_MUSICS_PER_PAGE) musicCardPage = (nOfPages - 1) * MAX_MUSICS_PER_PAGE;
+        if (musicCardPage >= nOfPages * MAX_MUSICS_PER_PAGE)
+            musicCardPage = (nOfPages - 1) * MAX_MUSICS_PER_PAGE;
+        clicked = 1;
     }
+
+    return clicked;
 }
 
 
 void drawMenuDisplay(AppContext *ctx) {
-    const int startX = GAP * 6 + 45;
+    const int startX = MUSIC_CARD_START_X;
     const int startY = MUSIC_CARD_START_Y;
     const int screenHeightLimit = SCREEN_WIDTH * 0.47 + 100;
     const int nOfPages = (ctx->arenaSongs.total + MAX_MUSICS_PER_PAGE - 1) / MAX_MUSICS_PER_PAGE;
-
-    // DrawRectangle(GAP * 5 + 50, 100, SCREEN_WIDTH * 0.75, SCREEN_WIDTH * 0.47, GRAY);
 
     handleKeyboardPageMusicCardNavigation(nOfPages);
     handleMouseScrollPageMusicCardNavigation(nOfPages);
@@ -191,6 +219,7 @@ int main(void)
     AppContext ctx = {
         .arenaSongs = arena,
         .status = &status,
+        .keyLog = { .count = 0, .capacity = 64, }
     };
 
 
@@ -205,7 +234,14 @@ int main(void)
     pthread_create(&music_thread, NULL, m_musicThreadFn, &ctx);
 
     while (!WindowShouldClose()){
-        handleMusicUserInput(&ctx, cmd, sizeof(cmd) / sizeof(cmd[0]));
+        int ret = handleMusicUserInput(&ctx, cmd, sizeof(cmd) / sizeof(cmd[0]));
+
+        if (ret == 1){
+            printf("Teclas pressionadas: ");
+            for (int i = 0; i < ctx.keyLog.count; i++)
+                printf("KEY_%c ", (char)cmd[ctx.keyLog.key[i]].key);
+            printf("\n");
+        }
 
         BeginDrawing();
             ClearBackground(BLACK);

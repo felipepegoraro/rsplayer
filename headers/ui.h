@@ -29,7 +29,8 @@ typedef struct Tooltip {
     Color color;
     float timeShown;
     bool visible;
-    const char* message;
+    char message[32];
+    // const char* message;
 } Tooltip;
 
 

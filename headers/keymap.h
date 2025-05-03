@@ -22,16 +22,49 @@ typedef struct Commands {
 } Commands;
 
 
-static int musicCardPage = 0;
+// #define MAX_INPUT_SEQUENCE 8
 
-// gerencia o input do usuário exclusivamente para controle da música
-void handleMusicUserInput(AppContext *ctx, Commands *cmd, int cmd_count) {
+static int musicCardPage;
+
+int handleMusicUserInput(AppContext *ctx, Commands *cmd, int cmd_count) {
+    int *repeatCmdFactor = &ctx->keyLog.localRepeater;
+
+    for (int key = KEY_ZERO; key <= KEY_NINE; key++) {
+        if (IsKeyPressed(key)) {
+            int digit = key - KEY_ZERO;
+            int next = (*repeatCmdFactor) * 10 + digit;
+
+            if (next > 10) return 0;
+
+            *repeatCmdFactor = next;
+            return 1;
+        }
+    }
+
+    int ret = 0;
+
     for (int i = 0; i < cmd_count; i++) {
         if (IsKeyPressed(cmd[i].key)) {
-            cmd[i].fn(ctx);
+            int times = *repeatCmdFactor > 0 ? *repeatCmdFactor : 1;
+            for (int r = 0; r < times; r++) {
+                cmd[i].fn(ctx);
+
+                if (ctx->keyLog.count < ctx->keyLog.capacity) {
+                    ctx->keyLog.key[ctx->keyLog.count++] = i;
+                } else {
+                    for (int j = 1; j < ctx->keyLog.capacity; j++)
+                        ctx->keyLog.key[j - 1] = ctx->keyLog.key[j];
+                    ctx->keyLog.key[ctx->keyLog.capacity - 1] = i;
+                }
+            }
+    
+            *repeatCmdFactor = 0;
+            ret = 1;
             break;
         }
     }
+
+    return ret;
 }
 
 #endif // KEYMAP_H

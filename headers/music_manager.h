@@ -5,6 +5,15 @@
 #include "id3.h"
 #include "timer.h"
 
+#define MAX_KEYLOG_ENTRY 64
+
+typedef struct KeyLogEntry {
+    int key[MAX_KEYLOG_ENTRY];
+    int count;
+    int capacity;
+    int localRepeater;
+} KeyLogEntry;
+
 typedef struct PlayerState {
     int indexSong;
     int isPaused;
@@ -22,6 +31,7 @@ typedef struct AppStatus {
 typedef struct AppContext {
     AppStatus *status;
     arena_t arenaSongs;
+    KeyLogEntry keyLog;
     // HashTable *songs
 } AppContext;
 
